@@ -1,0 +1,18 @@
+{
+  "domain": "zero_home",
+  "name": "Zero Home",
+  "codeowners": [
+    "@badereshtaya"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http"
+  ],
+  "documentation": "https://github.com/badereshtaya/zero-home",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/badereshtaya/zero-home/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "1.1.0"
+}
