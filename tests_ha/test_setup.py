@@ -49,9 +49,28 @@ async def test_setup_rpc_and_revoke(hass: HomeAssistant):
         assert states and states[0].state == "on"
         assert any(s.state == "https://ahmad.home.eshtaya.ps" for s in hass.states.async_all("sensor"))
 
-        # ui_ready false → repair issue with the YAML
+        # not trusted as a proxy → direct mode (no forwarded headers): safe here (no local-only user, no trusted
+        # networks), so the interface is ready and there is no repair issue
+        rt = entry.runtime_data
+        assert rt.ui_mode == "direct" and rt.ui_ready is True and rt.local.forward_client is False
+        assert hello["ui_ready"] is True
+        assert ir.async_get(hass).async_get_issue(DOMAIN, "ui_not_ready") is None
+
+        # a user limited to the home network makes direct mode unsafe → closed + repair issue
+        user = await hass.auth.async_create_user("Kid", local_only=True)
+        with patch("custom_components.zero_home.link.proxy.LocalHA.check_ui_ready", return_value=False):
+            await rt.check_ui()
+        assert rt.ui_ready is False and rt.ui_blocker.startswith("local_only")
         issue = ir.async_get(hass).async_get_issue(DOMAIN, "ui_not_ready")
         assert issue is not None and "trusted_proxies" in issue.translation_placeholders["yaml"]
+        await hass.auth.async_update_user(user, local_only=False)
+        with patch("custom_components.zero_home.link.proxy.LocalHA.check_ui_ready", return_value=False):
+            await rt.check_ui()
+        assert rt.ui_ready is True and ir.async_get(hass).async_get_issue(DOMAIN, "ui_not_ready") is None
+        await asyncio.sleep(0.3)
+        await hass.async_block_till_done()
+        while not relay.control.empty():          # the ui_ready state messages of the checks above
+            relay.control.get_nowait()
 
         # RPC through the link, limited to exposed entities
         await relay.send({"t": "rpc", "id": 1, "method": "ha.states", "params": {}})

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 DOMAIN = "zero_home"
 NAME = "Zero Home"
-AGENT_VERSION = "1.0.0"
+AGENT_VERSION = "1.2.0"
 
 DEFAULT_ADMIN_API = "https://zeroadmin.eshtaya.ps/api.php"
 
@@ -24,6 +24,7 @@ OPT_EXPOSE_AREAS = "expose_areas"
 OPT_EXPOSE_DOMAINS = "expose_domains"
 OPT_EXPOSE_LABELS = "expose_labels"
 OPT_EXPOSE_ENTITIES = "expose_entities"
+OPT_EXPOSE_UI = "expose_ui"              # the wizard's choice: all | rooms | types | custom
 OPT_REMOTE_UI = "remote_ui"
 OPT_SET_EXTERNAL_URL = "set_external_url"
 OPT_REPLACE_EXTERNAL_URL = "replace_external_url"
@@ -37,8 +38,9 @@ DEFAULT_OPTIONS = {
     OPT_EXPOSE_DOMAINS: [],
     OPT_EXPOSE_LABELS: [],
     OPT_EXPOSE_ENTITIES: [],
-    OPT_REMOTE_UI: True,
-    OPT_SET_EXTERNAL_URL: True,
+    # the web interface from outside is the person's own choice: off until they turn it on (2026-11-19)
+    OPT_REMOTE_UI: False,
+    OPT_SET_EXTERNAL_URL: False,
     OPT_REPLACE_EXTERNAL_URL: False,
 }
 

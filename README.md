@@ -41,27 +41,23 @@
 
 (بوضع «الخيارات المتقدمة» بتقدر تغيّر عنوان Zero Admin — اتركه مثل ما هو إلا إذا الدعم قلّك.)
 
-### الخيارات
+### المعالج (نسخة 1.2.0)
 
-من الإعدادات ← الأجهزة والخدمات ← Zero Home ← «تكوين»:
+الإعداد صار معالج من 4 خطوات: ترحيب ← تسجيل الدخول بزيرو ← **شو بيشوف زيرو** (كل إشي، أو بس غرف، أو بس أنواع أجهزة، أو اختيار دقيق) ← **واجهة Home Assistant من برا؟** ← ملخّص بعنوان بيتك.
+لتعديله بعدين: الإعدادات ← الأجهزة والخدمات ← Zero Home ← «تكوين» — نفس الخطوات وآخرها حالة الاتصال.
 
-- **شو زيرو بيشوف ويتحكم:** كل الأجهزة، أو بس اللي بتختارها — غرف، أنواع (light، switch…)، وسوم، أو قائمة أجهزة. الجهاز بيبين إذا طابق **أي** وحدة من اختياراتك.
-- **واجهة Home Assistant من برا:** (مفعّل افتراضياً) بتفتح الواجهة على عنوانك العام وبتبين داخل تبويب «Home Assistant» بزيرو.
-- **العنوان الخارجي:** (مفعّل افتراضياً) الإضافة بتحط عنوانك العام كـ `external_url` عشان تطبيقات Home Assistant الرسمية بالموبايل تشتغل من أي مكان. إذا كان عندك عنوان خارجي ثاني، ما بنغيّره إلا بعد ما توافق.
+- **واجهة Home Assistant من برا:** **مطفية افتراضياً** — بتشغّلها إنت إذا بدك تفتح شاشات Home Assistant على عنوانك العام (وبتبين داخل تبويب «Home Assistant» بزيرو). التحكم من زيرو بالصوت شغّال بكل الأحوال.
+- **العنوان الخارجي:** لما تشغّل الواجهة من برا، الإضافة بتحط عنوانك العام كـ `external_url` (إذا كان عندك عنوان ثاني، ما بنغيّره إلا بعد ما توافق).
 
-### سطرين لازم تضيفهم (للواجهة من برا)
+### بدون أي تعديل على configuration.yaml
 
-عشان Home Assistant يعرف العنوان الحقيقي لمين بيفتح الواجهة من برا (وتضل حماية الحظر وتسجيل الدخول المحلي شغّالة صح)، ضيف على `configuration.yaml` وأعد التشغيل:
+نسخ Home Assistant الجديدة ما بتقبل `trusted_proxies` بالكونفج، فالإضافة صارت تشتغل بـ«الوضع المباشر»: Home Assistant بيشوف الزوار جايين من الإضافة نفسها. عشان هيك، للأمان:
 
-```yaml
-http:
-  use_x_forwarded_for: true
-  trusted_proxies:
-    - 127.0.0.1
-    - ::1
-```
+- إذا في مستخدم معلّم عليه «Can only log in from the local network»، أو تسجيل دخول «trusted networks» مفعّل، الواجهة من برا بتضل مسكّرة وبيطلعلك تنبيه (Repairs) بيشرح شو تعمل.
+- الـ webhooks ما بتنفتح من برا عن طريق الربط.
+- محاولات تسجيل الدخول الكتير من نفس الزائر بتنوقف مؤقتاً (الإضافة بتعدّها حسب عنوانه الحقيقي).
 
-إذا ناقصين، الإضافة بتعرضلك تنبيه بالإصلاحات (Repairs) فيه نفس الأسطر. التحكم بالصوت وتحكم زيرو بالأجهزة بيشتغلوا بدونهم.
+(إذا نسختك لسا بتقبل `http: use_x_forwarded_for: true` + `trusted_proxies: [127.0.0.1, ::1]`، الإضافة بتستعملهم لحالها.)
 
 ### الخصوصية — شو بيمر عن طريق الربط
 
@@ -77,7 +73,7 @@ http:
 | «ما قدرنا نوصل لزيرو» وقت التفعيل | تأكد إنه Home Assistant متصل بالإنترنت وإنه الوقت مضبوط. |
 | الحساس «Zero Home» مطفي | شوف سمة `last_error` فيه. الإضافة بتحاول لحالها (1، 2، 5، 10، 30 ثانية وبعدها كل دقيقة). بعد 30 دقيقة بيطلع تنبيه. |
 | تنبيه «الربط توقّف» أو «الاشتراك ما بيشمله» | سجّل دخول من جديد بحساب زيرو (أو رمز تفعيل جديد) بنافذة إعادة المصادقة. |
-| الواجهة من برا بتعطي صفحة شرح | ضيف السطرين فوق وأعد التشغيل. |
+| الواجهة من برا بتقول «مسكّرة» | شغّل «افتح واجهة Home Assistant من برّا» من «تكوين». وإذا في تنبيه إنها مسكّرة للأمان، اتبعه (مستخدمين محليين / trusted networks). |
 | تطبيق الموبايل ما بيشتغل من برا | تأكد إنه خيار العنوان الخارجي مفعّل، أو حط العنوان العام بالتطبيق يدوياً. |
 | بدك تشوف التفاصيل | Zero Home ← ⋮ ← Download diagnostics (المفتاح مخفي فيه). |
 
@@ -124,31 +120,29 @@ Your plan must include the smart home. Zero's own "Link Home Assistant" wizard s
 With *Advanced mode* on in your profile you can change the Zero Admin API
 address; leave it unless Zero support tells you otherwise.
 
-### Options
+### The wizard (1.2.0)
 
-- **What Zero may see and control:** every entity, or only the chosen
-  areas, domains, labels and/or entities (an entity is exposed when it matches
-  **any** of them).
-- **Web interface through the link** (default on): the Home Assistant UI on
-  your public address and inside Zero's «Home Assistant» tab.
-- **External URL** (default on): sets Home Assistant's `external_url` to the
-  public address so the official mobile apps work from anywhere. If another
-  external URL is already set, it is changed only after you confirm.
+Set-up is a 4-step wizard: welcome → sign in to Zero → **what Zero may see** (everything, some rooms,
+some device types, or exactly chosen) → **Home Assistant's interface from outside?** → summary with your
+home's address. *Configure* later shows the same steps and the live connection status.
 
-### The two lines for the web interface
+- **Web interface from outside: off by default.** Turn it on only if you want Home Assistant's own screens
+  on your public address (and in Zero's «Home Assistant» tab). Zero's voice control works either way.
+- **External URL:** when the interface is on, the public address becomes `external_url` (an existing
+  different one is replaced only after you confirm).
 
-```yaml
-http:
-  use_x_forwarded_for: true
-  trusted_proxies:
-    - 127.0.0.1
-    - ::1
-```
+### No configuration.yaml changes
 
-Without them Home Assistant cannot see the real address of outside visitors
-(IP bans and local-only users would not work right), so the relay shows an
-explanation page instead of the UI. A repair issue shows the same lines.
-Voice control and Zero's control of devices work without them.
+Newer Home Assistant versions no longer take `trusted_proxies` from configuration.yaml, so the integration
+works in *direct mode*: Home Assistant sees visitors as coming from the integration itself. For safety:
+
+- if any user has «Can only log in from the local network», or the «trusted networks» login is enabled,
+  the interface from outside stays closed and a repair issue explains what to change;
+- webhooks are not reachable through the link;
+- repeated sign-in attempts from one visitor are blocked for a while (counted by their real address).
+
+(If your version still accepts `http: use_x_forwarded_for: true` + `trusted_proxies: [127.0.0.1, ::1]`,
+the integration uses it automatically.)
 
 ### Privacy — what goes through the link
 
@@ -170,7 +164,7 @@ Voice control and Zero's control of devices work without them.
 | "Cannot reach Zero" while activating | Check the internet connection and the clock. |
 | The «Zero Home» sensor is off | See its `last_error` attribute. It retries by itself (1, 2, 5, 10, 30 s, then every minute); a repair issue appears after 30 min. |
 | "The link was stopped" / "subscription does not include it" | Sign in again with your Zero account (or a new activation code) in the re-authentication dialog. |
-| The public address shows an explanation page | Add the two lines above and restart. |
+| The public address shows «closed from outside» | Turn on «Open Home Assistant's interface from outside» in *Configure*. If a repair issue says it is closed for safety, follow it (local-only users / trusted networks). |
 | Mobile app does not work away from home | Enable the external URL option, or enter the public address in the app. |
 | Need details for support | Zero Home → ⋮ → Download diagnostics (the key is redacted). |
 

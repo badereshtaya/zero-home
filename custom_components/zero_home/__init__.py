@@ -61,6 +61,20 @@ def local_base_url(hass: HomeAssistant) -> str:
     return f"{'https' if use_ssl else 'http'}://{host}:{port}"
 
 
+async def direct_mode_blocker(hass: HomeAssistant) -> str:
+    """'' when direct mode is safe; else why not (shown in the repair issue)."""
+    for prov in getattr(hass.auth, "auth_providers", []) or []:
+        if getattr(prov, "type", "") == "trusted_networks":
+            return "trusted_networks"
+    try:
+        users = await hass.auth.async_get_users()
+    except Exception:  # noqa: BLE001 - unknown = not safe
+        return "users"
+    names = [u.name or "?" for u in users
+             if u.is_active and not u.system_generated and getattr(u, "local_only", False)]
+    return ("local_only: " + ", ".join(names)) if names else ""
+
+
 class ZeroHomeRuntime:
     """Everything one config entry keeps while it is loaded."""
 
@@ -70,6 +84,8 @@ class ZeroHomeRuntime:
         self.options = options_of(entry)
         self.connected = False
         self.ui_ready: bool | None = None
+        self.ui_mode = ""                 # "forwarded" | "direct"
+        self.ui_blocker = ""              # direct mode not safe: "trusted_networks" | "local_only:<names>"
         self.exposed = 0
         self.welcome: dict | None = None
         self.last_event: str | None = None
@@ -87,7 +103,7 @@ class ZeroHomeRuntime:
     # -- state for hello / state messages ---------------------------------
     def agent_state(self) -> dict:
         return {"ha_version": HA_VERSION, "instance_id": self.instance_id,
-                "remote_ui": bool(self.options.get(OPT_REMOTE_UI, True)),
+                "remote_ui": bool(self.options.get(OPT_REMOTE_UI, False)),
                 "ui_ready": bool(self.ui_ready), "exposed": self.exposed,
                 "location_name": self.hass.config.location_name}
 
@@ -120,24 +136,32 @@ class ZeroHomeRuntime:
             self.recount_later()
 
     # -- ui_ready (§3.3) ---------------------------------------------------------
+    # Newer Home Assistant versions no longer take `http: trusted_proxies` from configuration.yaml (2026-11-19).
+    # When it does not trust us, the web interface still works in «direct mode»: no forwarded headers, so every
+    # visitor looks like this integration (127.0.0.1). That is only safe when nothing in Home Assistant gives a
+    # «home network» visitor more rights: no «trusted networks» login and no user limited to the local network.
     async def check_ui(self, *_: Any) -> None:
         if self.local is None:
             return
-        ready = await self.local.check_ui_ready()
-        if ready is None:
+        trusted = await self.local.check_ui_ready()
+        if trusted is None:
             return
+        self.local.forward_client = trusted
+        self.ui_mode = "forwarded" if trusted else "direct"
+        self.ui_blocker = "" if trusted else await direct_mode_blocker(self.hass)
+        ready = trusted or not self.ui_blocker
         if ready != self.ui_ready:
             self.ui_ready = ready
             if self.agent:
                 self.agent.notify_state()
             self.signal()
-        if ready or not self.options.get(OPT_REMOTE_UI, True):
+        if ready or not self.options.get(OPT_REMOTE_UI, False):
             ir.async_delete_issue(self.hass, DOMAIN, ISSUE_UI_NOT_READY)
         else:
             ir.async_create_issue(
                 self.hass, DOMAIN, ISSUE_UI_NOT_READY, is_fixable=False, is_persistent=False,
                 severity=ir.IssueSeverity.WARNING, translation_key=ISSUE_UI_NOT_READY,
-                translation_placeholders={"yaml": TRUSTED_PROXY_YAML})
+                translation_placeholders={"yaml": TRUSTED_PROXY_YAML, "blocker": self.ui_blocker})
 
     # -- agent events -------------------------------------------------------------
     @callback
@@ -201,7 +225,7 @@ async def async_apply_external_url(hass: HomeAssistant, entry: ConfigEntry) -> N
     """Point Home Assistant's external_url at the public address (option)."""
     opts = options_of(entry)
     public_url = entry.data.get(CONF_PUBLIC_URL)
-    if not public_url or not opts.get(OPT_SET_EXTERNAL_URL, True):
+    if not public_url or not opts.get(OPT_SET_EXTERNAL_URL, False):
         ir.async_delete_issue(hass, DOMAIN, ISSUE_EXTERNAL_URL)
         return
     current = hass.config.external_url

@@ -7,6 +7,7 @@ dummy cookie jar (cookies belong to the browser, not to the agent).
 """
 from __future__ import annotations
 
+import time
 from typing import AsyncIterator, Iterable, Sequence
 
 import aiohttp
@@ -47,8 +48,13 @@ def frame_ancestors(zero_web_origin: str) -> str:
 
 
 def rewrite_request_headers(headers: HeaderList, client_ip: str, public_host: str,
-                            *, websocket: bool = False) -> list[tuple[str, str]]:
-    """Headers for the request to the local Home Assistant (§3.1)."""
+                            *, websocket: bool = False, forward: bool = True) -> list[tuple[str, str]]:
+    """Headers for the request to the local Home Assistant (§3.1).
+
+    ``forward=False`` («direct mode», 2026-11-19): Home Assistant does not trust this integration as a proxy
+    (newer versions no longer take ``http: trusted_proxies`` from configuration.yaml), so NO forwarded header is
+    sent — Home Assistant would answer 400 to any of them. The visitor's own forwarded headers are dropped either way.
+    """
     extra = _connection_tokens(headers)
     out: list[tuple[str, str]] = []
     for pair in headers or ():
@@ -63,10 +69,11 @@ def rewrite_request_headers(headers: HeaderList, client_ip: str, public_host: st
         if "\r" in name or "\n" in name or "\r" in value or "\n" in value:
             continue
         out.append((name, value))
-    out.append(("X-Forwarded-For", client_ip or "0.0.0.0"))
-    out.append(("X-Forwarded-Proto", "https"))
-    if public_host:
-        out.append(("X-Forwarded-Host", public_host))
+    if forward:
+        out.append(("X-Forwarded-For", client_ip or "0.0.0.0"))
+        out.append(("X-Forwarded-Proto", "https"))
+        if public_host:
+            out.append(("X-Forwarded-Host", public_host))
     return out
 
 
@@ -112,6 +119,51 @@ class BadPath(ValueError):
     """The relay sent a path that is not an absolute local path."""
 
 
+class Refused(ValueError):
+    """Direct mode: a request that must not reach Home Assistant from outside (status, reason)."""
+
+    def __init__(self, status: int, reason: str) -> None:
+        super().__init__(reason)
+        self.status = status
+
+
+# In direct mode Home Assistant sees every visitor as this integration (127.0.0.1): its own per-address login ban
+# cannot tell visitors apart, so the integration counts sign-in attempts per real visitor address itself.
+LOGIN_WINDOW_S = 600
+LOGIN_MAX = 20              # POSTs to /auth/login_flow per visitor per window (≈ 10 password tries)
+
+
+class LoginLimiter:
+    def __init__(self, window: float = LOGIN_WINDOW_S, limit: int = LOGIN_MAX, now=time.monotonic) -> None:
+        self.window, self.limit, self.now = window, limit, now
+        self._hits: dict[str, list[float]] = {}
+
+    def allow(self, client_ip: str) -> bool:
+        t = self.now()
+        hits = [h for h in self._hits.get(client_ip, ()) if t - h < self.window]
+        if len(hits) >= self.limit:
+            self._hits[client_ip] = hits
+            return False
+        hits.append(t)
+        self._hits[client_ip] = hits
+        if len(self._hits) > 5000:                       # keep it small
+            for k in [k for k, v in self._hits.items() if not v or t - v[-1] >= self.window]:
+                self._hits.pop(k, None)
+        return True
+
+
+def direct_refusal(method: str, path: str, client_ip: str, limiter: LoginLimiter) -> Refused | None:
+    """What direct mode keeps away from Home Assistant: webhooks (a «local only» webhook would look local) and
+    too many sign-in attempts from one visitor."""
+    p = path.split("?", 1)[0].lower()
+    if p.startswith("/api/webhook/"):
+        return Refused(403, "webhooks are not reachable through Zero Home")
+    if method.upper() == "POST" and p.startswith("/auth/login_flow"):
+        if not limiter.allow(client_ip or "?"):
+            return Refused(429, "too many sign-in attempts")
+    return None
+
+
 class LocalHA:
     """Home Assistant's own HTTP server, as seen from the integration."""
 
@@ -123,6 +175,10 @@ class LocalHA:
         self.public_host = public_host
         self.zero_web_origin = zero_web_origin
         self.connect_timeout = connect_timeout
+        # True: Home Assistant trusts us as a proxy (§3.3) → the visitor's address goes in X-Forwarded-For;
+        # False: direct mode (no forwarded headers, see rewrite_request_headers)
+        self.forward_client = True
+        self.limiter = LoginLimiter()
 
     # -- urls ---------------------------------------------------------------
     def url(self, path: str, *, websocket: bool = False) -> URL:
@@ -138,8 +194,12 @@ class LocalHA:
     # -- http ---------------------------------------------------------------
     async def request(self, method: str, path: str, headers: HeaderList, client_ip: str,
                       body: AsyncIterator[bytes] | None) -> aiohttp.ClientResponse:
-        """Open the request; the caller reads and releases the response."""
-        hdrs = rewrite_request_headers(headers, client_ip, self.public_host)
+        """Open the request; the caller reads and releases the response (Refused in direct mode)."""
+        if not self.forward_client:
+            refused = direct_refusal(method, path, client_ip, self.limiter)
+            if refused is not None:
+                raise refused
+        hdrs = rewrite_request_headers(headers, client_ip, self.public_host, forward=self.forward_client)
         return await self.session.request(
             method.upper(), self.url(path),
             headers=hdrs,
@@ -156,7 +216,10 @@ class LocalHA:
     # -- websocket ------------------------------------------------------------
     async def websocket(self, path: str, headers: HeaderList, client_ip: str,
                         protocols: Sequence[str] = ()) -> aiohttp.ClientWebSocketResponse:
-        hdrs = rewrite_request_headers(headers, client_ip, self.public_host, websocket=True)
+        if not self.forward_client and path.split("?", 1)[0].lower().startswith("/api/webhook/"):
+            raise Refused(403, "webhooks are not reachable through Zero Home")
+        hdrs = rewrite_request_headers(headers, client_ip, self.public_host, websocket=True,
+                                       forward=self.forward_client)
         return await self.session.ws_connect(
             self.url(path, websocket=True),
             headers=hdrs,

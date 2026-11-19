@@ -400,3 +400,27 @@ async def test_strict_ha_answers_400_through_link(env):
     env.ha.strict = True
     res, _, _ = await env.relay.http("GET", "/api/echo")
     assert res["status"] == 400
+
+
+# ---------------------------------------------------------------- direct mode (2026-11-19)
+async def test_direct_mode_no_forwarded_headers(env):
+    """Home Assistant does not trust us as a proxy: no forwarded header at all, so it answers normally."""
+    env.ha.strict = True
+    env.local.forward_client = False
+    res, body, _ = await env.relay.http(
+        "GET", "/api/echo", headers=[["X-Forwarded-For", "6.6.6.6"], ["X-Forwarded-Host", "evil"]])
+    assert res["status"] == 200
+    info = json.loads(body)
+    assert info["xff"] == [] and info["xfp"] is None and info["xfh"] is None
+
+
+async def test_direct_mode_refuses_webhooks_and_limits_logins(env):
+    env.local.forward_client = False
+    res, _, _ = await env.relay.http("POST", "/api/webhook/abc", body=b"{}")
+    assert res["status"] == 403
+    env.local.limiter.limit = 2
+    codes = []
+    for _ in range(3):
+        r, _, _ = await env.relay.http("POST", "/auth/login_flow/x", body=b"{}")
+        codes.append(r["status"])
+    assert codes[-1] == 429 and 429 not in codes[:2]

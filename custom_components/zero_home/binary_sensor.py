@@ -28,5 +28,5 @@ class ZeroHomeConnected(ZeroHomeEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         rt = self.runtime
-        return {"ui_ready": rt.ui_ready, "exposed": rt.exposed,
+        return {"ui_ready": rt.ui_ready, "ui_mode": rt.ui_mode, "exposed": rt.exposed,
                 "last_error": rt.last_error, "stop_reason": rt.stop_reason}

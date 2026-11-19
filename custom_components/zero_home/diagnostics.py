@@ -19,7 +19,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         status = {
             "agent_version": AGENT_VERSION,
             "connected": rt.connected,
-            "ui_ready": rt.ui_ready,
+            "ui_ready": rt.ui_ready, "ui_mode": rt.ui_mode, "ui_blocker": rt.ui_blocker,
             "exposed": rt.exposed,
             "last_event": rt.last_event,
             "last_error": rt.last_error,

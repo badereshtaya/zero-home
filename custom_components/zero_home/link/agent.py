@@ -24,7 +24,7 @@ from typing import Any, Awaitable, Callable
 import aiohttp
 
 from . import frames as F
-from .proxy import BadPath, LocalHA
+from .proxy import BadPath, LocalHA, Refused
 from .rpc import CODE_HA_ERROR, CODE_TIMEOUT, RpcError
 
 _LOG = logging.getLogger(__name__)
@@ -390,6 +390,11 @@ class Agent:
                 await self._send_frame(sid, F.KIND_END)
                 clean = True
                 return
+            except Refused as err:
+                await self._send({"t": "res", "id": sid, "status": err.status, "headers": [], "error": str(err)})
+                await self._send_frame(sid, F.KIND_END)
+                clean = True
+                return
             except (aiohttp.ClientError, OSError, asyncio.TimeoutError, ValueError) as err:
                 await self._send({"t": "res", "id": sid, "status": 502, "headers": [],
                                   "error": f"Home Assistant: {type(err).__name__}"})
@@ -446,6 +451,9 @@ class Agent:
                 return
             except BadPath:
                 await self._send({"t": "ws_fail", "id": sid, "status": 400})
+                return
+            except Refused as err:
+                await self._send({"t": "ws_fail", "id": sid, "status": err.status})
                 return
             except (aiohttp.ClientError, OSError, asyncio.TimeoutError, ValueError):
                 await self._send({"t": "ws_fail", "id": sid, "status": 502})

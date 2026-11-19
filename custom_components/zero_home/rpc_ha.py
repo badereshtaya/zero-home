@@ -72,8 +72,13 @@ class HaRpcBackend:
         return st.last_updated.isoformat() if st else None
 
     async def services(self) -> dict[str, dict]:
-        descriptions = await async_get_all_descriptions(self.hass)
-        return json.loads(json.dumps(descriptions, cls=JSONEncoder))
+        descriptions = json.loads(json.dumps(await async_get_all_descriptions(self.hass), cls=JSONEncoder))
+        # newer Home Assistant versions leave «name» to the translations: keep the documented shape (PROTOCOL §2.3)
+        for svcs in descriptions.values():
+            for sid, desc in (svcs or {}).items():
+                if isinstance(desc, dict) and not desc.get("name"):
+                    desc["name"] = sid.replace("_", " ").capitalize()
+        return descriptions
 
     # -- registries -----------------------------------------------------------
     def registry(self) -> dict:

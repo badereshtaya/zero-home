@@ -2,12 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Zero Home",
-        "description": "Link this Home Assistant to your Zero account. Zero then controls your home from anywhere, and the home gets its own address https://<your username>.home.<domain> — no router settings, no domain of your own.",
-        "menu_options": {
-          "login": "Sign in with my Zero account (recommended)",
-          "code": "I have an activation code"
-        }
+        "title": "Step 1 of 4 — Zero Home",
+        "description": "Zero Home links this Home Assistant to your Zero account, so Zero can control your home from anywhere — no router settings, no domain of your own, nothing to change in configuration.yaml.\n\nYou will: 1) sign in to Zero, 2) choose what Zero can see, 3) decide whether Home Assistant's own screens open from outside (off by default). Press Submit to start."
       },
       "login": {
         "title": "Sign in with your Zero account",
@@ -42,6 +38,56 @@
           "password": "Password",
           "code": "Or: a new activation code"
         }
+      },
+      "method": {
+        "title": "Sign in to Zero",
+        "description": "How do you want to link this home?",
+        "menu_options": {
+          "login": "With my Zero username and password (recommended)",
+          "code": "I have an activation code (ZH-…)"
+        }
+      },
+      "see": {
+        "title": "Step 2 of 4 — What can Zero see?",
+        "description": "Choose which devices Zero may see and control. You can change this any time from the integration's «Configure» button.\n\n• **Everything** — simplest, recommended.\n• **Only some rooms** or **only some device types** — you pick on the next screen.",
+        "data": {
+          "see": "What Zero may see and control"
+        }
+      },
+      "see_rooms": {
+        "title": "Choose the rooms",
+        "description": "Zero will see and control only the devices in these rooms.",
+        "data": {
+          "expose_areas": "Rooms"
+        }
+      },
+      "see_types": {
+        "title": "Choose the device types",
+        "description": "Zero will see and control only these kinds of devices (lights, switches, air conditioning…).",
+        "data": {
+          "expose_domains": "Device types"
+        }
+      },
+      "see_custom": {
+        "title": "Choose exactly",
+        "description": "A device is visible to Zero when it is in one of the chosen rooms, OR of one of the chosen types, OR has one of the chosen labels, OR is listed.",
+        "data": {
+          "expose_areas": "Rooms",
+          "expose_domains": "Device types",
+          "expose_labels": "Labels",
+          "expose_entities": "Devices"
+        }
+      },
+      "outside": {
+        "title": "Step 3 of 4 — Home Assistant's own screens from outside?",
+        "description": "Zero controls your home from anywhere either way — by voice and in the Zero app.\n\nThis choice is only about opening **Home Assistant's own web interface** from outside the home at {public_url}. It stays **off** unless you turn it on, and you can change it any time. No changes to configuration.yaml are needed.",
+        "data": {
+          "remote_ui": "Open Home Assistant's interface from outside"
+        }
+      },
+      "done": {
+        "title": "Step 4 of 4 — Ready",
+        "description": "Your home's address: **{public_url}**\n\n• Zero sees: {see} {see_detail}\n• Home Assistant's interface from outside: {outside}\n\nPress Submit — the home connects within a few seconds. The «Connected» sensor of Zero Home shows the status."
       }
     },
     "error": {
@@ -54,7 +100,8 @@
       "rate_limited": "Too many attempts. Wait an hour and try again.",
       "cannot_connect": "Cannot reach Zero. Check this Home Assistant's internet connection and try again.",
       "bad_answer": "Zero answered in an unexpected way. Try again later or contact Zero support.",
-      "invalid_auth": "Wrong Zero username or password. Use the same account you sign in to Zero with."
+      "invalid_auth": "Wrong Zero username or password. Use the same account you sign in to Zero with.",
+      "nothing_selected": "Choose at least one."
     },
     "abort": {
       "single_instance_allowed": "Zero Home is already set up. One home per Home Assistant.",
@@ -65,23 +112,46 @@
   "options": {
     "step": {
       "init": {
-        "title": "Zero Home options",
-        "description": "Choose what Zero may see and control, and how this home is reached from outside.",
+        "title": "Step 2 of 4 — What can Zero see?",
+        "description": "Choose which devices Zero may see and control. You can change this any time from the integration's «Configure» button.\n\n• **Everything** — simplest, recommended.\n• **Only some rooms** or **only some device types** — you pick on the next screen.",
         "data": {
-          "expose_mode": "What Zero may see and control",
-          "remote_ui": "Allow the Home Assistant web interface through the link",
-          "set_external_url": "Set Home Assistant's external URL to the public address (the official mobile apps then work from anywhere)"
+          "see": "What Zero may see and control"
         }
       },
-      "select": {
-        "title": "Chosen entities",
-        "description": "An entity is visible to Zero when it is in one of the chosen areas, OR of one of the chosen domains, OR has one of the chosen labels, OR is listed.",
+      "see_rooms": {
+        "title": "Choose the rooms",
+        "description": "Zero will see and control only the devices in these rooms.",
         "data": {
-          "expose_areas": "Areas",
-          "expose_domains": "Domains (light, switch, climate, …)",
-          "expose_labels": "Labels",
-          "expose_entities": "Entities"
+          "expose_areas": "Rooms"
         }
+      },
+      "see_types": {
+        "title": "Choose the device types",
+        "description": "Zero will see and control only these kinds of devices (lights, switches, air conditioning…).",
+        "data": {
+          "expose_domains": "Device types"
+        }
+      },
+      "see_custom": {
+        "title": "Choose exactly",
+        "description": "A device is visible to Zero when it is in one of the chosen rooms, OR of one of the chosen types, OR has one of the chosen labels, OR is listed.",
+        "data": {
+          "expose_areas": "Rooms",
+          "expose_domains": "Device types",
+          "expose_labels": "Labels",
+          "expose_entities": "Devices"
+        }
+      },
+      "outside": {
+        "title": "Step 3 of 4 — Home Assistant's own screens from outside?",
+        "description": "Zero controls your home from anywhere either way — by voice and in the Zero app.\n\nThis choice is only about opening **Home Assistant's own web interface** from outside the home at {public_url}. It stays **off** unless you turn it on, and you can change it any time. No changes to configuration.yaml are needed.",
+        "data": {
+          "remote_ui": "Open Home Assistant's interface from outside"
+        }
+      },
+      "done": {
+        "title": "Summary",
+        "description": "Address: **{public_url}**\nConnection now: {status} ({ui_mode})\n\n• Zero sees: {see} {see_detail}\n• Home Assistant's interface from outside: {outside}\n\nPress Submit to save."
       },
       "external_url": {
         "title": "Replace the external URL?",
@@ -92,7 +162,7 @@
       }
     },
     "error": {
-      "nothing_selected": "Choose at least one area, domain, label or entity."
+      "nothing_selected": "Choose at least one."
     }
   },
   "selector": {
@@ -101,12 +171,20 @@
         "all": "Every entity",
         "select": "Only the areas, domains, labels or entities I choose"
       }
+    },
+    "see": {
+      "options": {
+        "all": "Everything (recommended)",
+        "rooms": "Only some rooms",
+        "types": "Only some device types",
+        "custom": "Choose exactly (rooms, types, labels, devices)"
+      }
     }
   },
   "issues": {
     "ui_not_ready": {
-      "title": "Zero Home: allow the forwarded address",
-      "description": "The web interface through Zero Home needs Home Assistant to trust this integration as a proxy, so it sees the real address of whoever connects from outside. Add these lines to `configuration.yaml` and restart Home Assistant:\n\n```yaml\n{yaml}\n```\n\nVoice control and Zero's control of your devices work without it."
+      "title": "Zero Home: the web interface from outside is closed",
+      "description": "Through Zero Home every visitor reaches Home Assistant as if they were at home, so the web interface from outside stays closed while Home Assistant gives home-network visitors extra rights ({blocker}).\n\nTo open it: turn off «Can only log in from the local network» for those users (Settings → People), or remove the «trusted networks» login. If your Home Assistant version still accepts it, adding these lines to `configuration.yaml` also works:\n\n```yaml\n{yaml}\n```\n\nVoice control and Zero's control of your devices work without it."
     },
     "link_revoked": {
       "title": "Zero Home: the link was stopped",
