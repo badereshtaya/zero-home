@@ -34,3 +34,11 @@ if sys.platform == "win32":
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations):
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_client_log_network():
+    """client_log sends to Zero Admin; tests keep it local (its own unit tests cover the sending)."""
+    from unittest.mock import AsyncMock, patch
+    with patch("custom_components.zero_home.link.clientlog.ClientLog.flush", AsyncMock(return_value=0)):
+        yield

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 DOMAIN = "zero_home"
 NAME = "Zero Home"
-AGENT_VERSION = "1.3.1"
+AGENT_VERSION = "1.3.2"
 
 DEFAULT_ADMIN_API = "https://zeroadmin.eshtaya.ps/api.php"
 

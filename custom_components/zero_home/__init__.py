@@ -42,6 +42,7 @@ from .const import (
 )
 from .link import account as A
 from .link.agent import Agent, AgentConfig
+from .link.clientlog import ClientLog, LogHandler
 from .link.proxy import LocalHA
 from .link.rpc import Exposure, RpcDispatcher
 from .rpc_ha import HaRpcBackend
@@ -99,6 +100,7 @@ class ZeroHomeRuntime:
         self.config_version = ""
         self.refresh_every = CONFIG_REFRESH_S
         self.signed_out = False
+        self.clog: ClientLog | None = None    # 1.3.2: warnings/errors + relay events → Zero Admin (client_log)
         self.home_state = "ready"          # ROUND2 §A: ready | method_external | home_disabled | not_chosen | plan
         self._last_new_key = 0.0
         self._closed = False
@@ -189,6 +191,12 @@ class ZeroHomeRuntime:
     @callback
     def on_agent_event(self, name: str, info: dict) -> None:
         self.last_event = name
+        if self.clog is not None and name in ("connected", "disconnected", "stopped"):
+            if name == "connected":
+                self.clog.add("info", "relay connected", ctx={"event": name})
+            else:
+                self.clog.add("warn", f"relay {name}: {info.get('reason') or info.get('error') or ''}".strip(),
+                              ctx={"event": name, "retry_in": info.get("retry_in")})
         if name == "connected":
             self.connected = True
             self.welcome = info
@@ -243,6 +251,10 @@ class ZeroHomeRuntime:
             if self.dispatcher is not None:
                 self.dispatcher.exposure = Exposure.from_options(new)
         return changed
+
+    async def flush_log(self, *_: Any) -> None:
+        if self.clog is not None:
+            await self.clog.flush(async_get_clientsession(self.hass))
 
     @property
     def manage_url(self) -> str:
@@ -402,6 +414,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.runtime_data = rt
     if not rt.token:
         raise ConfigEntryAuthFailed("sign in to the Zero account")
+    # problems of the integration → Zero Admin, with this integration's device token (link/clientlog.py)
+    rt.clog = ClientLog(rt.admin_api, lambda: rt.token, device=f"Home Assistant — {hass.config.location_name or ''}".strip(" —"),
+                        device_id=rt.instance_id, version=AGENT_VERSION)
+    _handler = LogHandler(rt.clog, lambda f: hass.loop.call_soon_threadsafe(f))
+    _pkg_logger = logging.getLogger(__package__ or "custom_components.zero_home")
+    _pkg_logger.addHandler(_handler)
+    entry.async_on_unload(lambda: _pkg_logger.removeHandler(_handler))
+    rt._unsubs.append(async_track_time_interval(hass, rt.flush_log, timedelta(seconds=60)))
+    entry.async_on_unload(rt.close)          # also when the setup below fails (sign-in needed, not ready…)
     session = async_get_clientsession(hass)
     try:
         cfg = await A.agent_config(session, rt.admin_api, rt.token)
@@ -482,6 +503,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     rt: ZeroHomeRuntime | None = getattr(entry, "runtime_data", None)
     if rt is not None and rt.agent is not None:
         await rt.agent.stop()     # the background task itself is cancelled by HA
+    if rt is not None:
+        try:
+            await rt.flush_log()
+        except Exception:  # noqa: BLE001 - never block the unload
+            pass
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
