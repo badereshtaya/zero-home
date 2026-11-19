@@ -55,5 +55,6 @@ class ZeroHomeAccount(ZeroHomeEntity, SensorEntity):
                 "subscription": sub.get("status"), "days_left": sub.get("days_left"), "ends_at": sub.get("ends_at"),
                 "plan": plan.get("name") if isinstance(plan, dict) else plan,
                 "home_status": (info.get("home") or {}).get("status"),
+                "home_state": self.runtime.home_state,
                 "signed_in": not self.runtime.signed_out,
                 "manage_url": info.get("manage_url")}

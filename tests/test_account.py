@@ -134,3 +134,29 @@ def test_options_from_config(expose, mode, key, items):
     if key:
         assert o[key] == items
     assert A.options_from_config({})["remote_ui"] is False
+
+
+async def test_activate_409_kinds():
+    async def api(request):
+        return web.json_response({"ok": False, "code": request.query.get("x"), "error": "e",
+                                  "manage_url": "https://zeroapp.eshtaya.ps/account.html#home"}, status=409)
+    app = web.Application(); app.router.add_post("/api.php", api)
+    runner = web.AppRunner(app); await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0); await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    try:
+        async with aiohttp.ClientSession() as s:
+            for code in ("method_external", "home_disabled"):
+                with pytest.raises(A.AccountError) as e:
+                    await A.activate(s, f"http://127.0.0.1:{port}/api.php?x={code}", "t", instance_id="i", ha_version="v", agent_version="1")
+                assert e.value.kind == code and e.value.status == 409 and e.value.data["manage_url"].endswith("#home")
+                assert not isinstance(e.value, A.Revoked)
+    finally:
+        await runner.cleanup()
+
+
+def test_home_state():
+    assert A.home_state({}) == "ready"                                  # older servers
+    for st in ("ready", "method_external", "home_disabled", "not_chosen", "plan"):
+        assert A.home_state({"home": {"state": st}}) == st
+    assert A.home_state({"home": {"state": "weird"}}) == "ready"

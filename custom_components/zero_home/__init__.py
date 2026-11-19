@@ -32,7 +32,8 @@ from homeassistant.helpers.start import async_at_started
 from datetime import timedelta
 
 from .const import (
-    CONF_ADMIN_API, CONF_DEVICE_TOKEN, CONFIG_REFRESH_S, DEFAULT_ADMIN_API, ISSUE_SIGNED_OUT, RELAY_KEYS,
+    CONF_ADMIN_API, CONF_DEVICE_TOKEN, CONFIG_REFRESH_S, DEFAULT_ADMIN_API, ISSUE_HOME_STATE, ISSUE_SIGNED_OUT,
+    MANAGE_URL, RELAY_KEYS,
     AGENT_VERSION, CONF_AGENT_TOKEN, CONF_HOME_ID, CONF_PUBLIC_URL, CONF_RELAY_WS,
     CONF_SUBDOMAIN, CONF_ZERO_WEB_ORIGIN, DEFAULT_OPTIONS, DOMAIN, EXPOSED_DEBOUNCE_S,
     ISSUE_EXTERNAL_URL, ISSUE_PLAN, ISSUE_REVOKED, ISSUE_UI_NOT_READY, ISSUE_UNREACHABLE,
@@ -98,6 +99,7 @@ class ZeroHomeRuntime:
         self.config_version = ""
         self.refresh_every = CONFIG_REFRESH_S
         self.signed_out = False
+        self.home_state = "ready"          # ROUND2 §A: ready | method_external | home_disabled | not_chosen | plan
         self._last_new_key = 0.0
         self._closed = False
         self.connected = False
@@ -242,6 +244,39 @@ class ZeroHomeRuntime:
                 self.dispatcher.exposure = Exposure.from_options(new)
         return changed
 
+    @property
+    def manage_url(self) -> str:
+        return str((self.account or {}).get("manage_url") or MANAGE_URL)
+
+    @callback
+    def show_home_state(self) -> None:
+        """A read-only note while the account has the link off / on another method; gone when ready."""
+        if self.home_state == "ready":
+            ir.async_delete_issue(self.hass, DOMAIN, ISSUE_HOME_STATE)
+            return
+        ir.async_create_issue(self.hass, DOMAIN, ISSUE_HOME_STATE, is_fixable=False, is_persistent=False,
+                              severity=ir.IssueSeverity.WARNING, translation_key=f"home_{self.home_state}",
+                              translation_placeholders={"manage_url": self.manage_url})
+
+    async def set_home_state(self, state: str) -> None:
+        """Not ready → stop the relay and forget its key (a new one is asked when ready again); ready → start again."""
+        if state == self.home_state:
+            return
+        was = self.home_state
+        self.home_state = state
+        self.show_home_state()
+        if state != "ready":
+            self.connected = False
+            self.stop_reason = state
+            if self.agent is not None:
+                await self.agent.stop()
+            if self.entry.data.get(CONF_AGENT_TOKEN):
+                self.hass.config_entries.async_update_entry(
+                    self.entry, data={**self.entry.data, CONF_AGENT_TOKEN: ""})
+        elif was != "ready":
+            self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
+        self.signal()
+
     async def refresh_config(self, *_: Any) -> None:
         if self.signed_out:
             return
@@ -253,6 +288,7 @@ class ZeroHomeRuntime:
         except A.AccountError as err:
             _LOG.debug("Zero Home: settings not read (%s)", err)
             return
+        await self.set_home_state(A.home_state(cfg))
         if self.apply_config(cfg):
             self.recount()
             await self.check_ui()
@@ -291,6 +327,11 @@ class ZeroHomeRuntime:
             await self.sign_out()
             return
         except A.AccountError as err:
+            if err.kind in A.HOME_STATES_OFF:
+                if err.data.get("manage_url"):
+                    self.account["manage_url"] = err.data["manage_url"]
+                await self.set_home_state(err.kind)
+                return
             issue = ISSUE_PLAN if err.kind == A.ERR_PLAN else ISSUE_REVOKED
             ir.async_create_issue(self.hass, DOMAIN, issue, is_fixable=False, is_persistent=False,
                                   severity=ir.IssueSeverity.ERROR, translation_key=issue)
@@ -370,6 +411,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(f"Zero: {err.kind}") from err
     rt.apply_config(cfg)
     ir.async_delete_issue(hass, DOMAIN, ISSUE_SIGNED_OUT)
+    rt.home_state = A.home_state(cfg)
+    rt.show_home_state()
+    if rt.home_state != "ready":
+        # the account uses another linking method or has Zero Home off: show it, poll, link when it says ready
+        rt.stop_reason = rt.home_state
+        rt._unsubs.append(async_track_time_interval(hass, rt.refresh_config, timedelta(seconds=rt.refresh_every)))
+        entry.async_on_unload(rt.close)
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        return True
     if not entry.data.get(CONF_AGENT_TOKEN) or not entry.data.get(CONF_RELAY_WS):
         try:
             creds = await A.activate(session, rt.admin_api, rt.token, instance_id=rt.instance_id,
@@ -377,9 +427,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except A.Revoked as err:
             raise ConfigEntryAuthFailed("signed out from the account") from err
         except A.AccountError as err:
-            if err.kind == A.ERR_PLAN:
-                ir.async_create_issue(hass, DOMAIN, ISSUE_PLAN, is_fixable=False, is_persistent=False,
-                                      severity=ir.IssueSeverity.ERROR, translation_key=ISSUE_PLAN)
+            if err.kind in A.HOME_STATES_OFF or err.kind == A.ERR_PLAN:
+                # 409 method_external / home_disabled, 422 plan: not an error to retry — show it and poll the settings
+                if err.data.get("manage_url"):
+                    rt.account["manage_url"] = err.data["manage_url"]
+                rt.home_state = "plan" if err.kind == A.ERR_PLAN else err.kind
+                rt.stop_reason = rt.home_state
+                rt.show_home_state()
+                rt._unsubs.append(async_track_time_interval(hass, rt.refresh_config, timedelta(seconds=rt.refresh_every)))
+                entry.async_on_unload(rt.close)
+                await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+                return True
             raise ConfigEntryNotReady(f"Zero home link: {err.kind}") from err
         hass.config_entries.async_update_entry(entry, data={**entry.data, **{k: creds.get(k) or "" for k in RELAY_KEYS}})
 
@@ -428,5 +486,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    for issue in (ISSUE_UI_NOT_READY, ISSUE_REVOKED, ISSUE_PLAN, ISSUE_UNREACHABLE, ISSUE_EXTERNAL_URL, ISSUE_SIGNED_OUT):
+    for issue in (ISSUE_UI_NOT_READY, ISSUE_REVOKED, ISSUE_PLAN, ISSUE_UNREACHABLE, ISSUE_EXTERNAL_URL, ISSUE_SIGNED_OUT,
+                  ISSUE_HOME_STATE):
         ir.async_delete_issue(hass, DOMAIN, issue)

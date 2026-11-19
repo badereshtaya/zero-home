@@ -3,7 +3,7 @@ from __future__ import annotations
 
 DOMAIN = "zero_home"
 NAME = "Zero Home"
-AGENT_VERSION = "1.3.0"
+AGENT_VERSION = "1.3.1"
 
 DEFAULT_ADMIN_API = "https://zeroadmin.eshtaya.ps/api.php"
 
@@ -63,6 +63,7 @@ ISSUE_PLAN = "plan_ended"
 ISSUE_UNREACHABLE = "relay_unreachable"
 ISSUE_EXTERNAL_URL = "external_url_conflict"
 ISSUE_SIGNED_OUT = "signed_out"
+ISSUE_HOME_STATE = "home_state"     # the account uses another linking method / switched Zero Home off
 
 TRUSTED_PROXY_YAML = """http:
   use_x_forwarded_for: true

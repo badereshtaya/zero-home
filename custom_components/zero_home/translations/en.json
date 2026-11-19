@@ -79,6 +79,22 @@
     "signed_out": {
       "title": "Zero Home: signed out of the Zero account",
       "description": "This Home Assistant was signed out of your Zero account (from the account page, or the password changed), so the home link is stopped. Open Settings → Devices & services → Zero Home and sign in again."
+    },
+    "home_method_external": {
+      "title": "Zero Home: your account uses its own address",
+      "description": "Your Zero account links Home Assistant with its own external address, so the Zero Home link is not used. To use Zero Home instead, switch the linking method in your account: {manage_url}\n\nThis clears by itself once you switch."
+    },
+    "home_home_disabled": {
+      "title": "Zero Home is switched off in your account",
+      "description": "Zero Home is switched off in your Zero account, so this home is not linked. Switch it on here: {manage_url}\n\nThe link starts by itself within a minute."
+    },
+    "home_not_chosen": {
+      "title": "Zero Home: choose how to link the home",
+      "description": "Your Zero account has not chosen how to link Home Assistant yet. Choose «Zero Home» here: {manage_url}\n\nThe link starts by itself within a minute."
+    },
+    "home_plan": {
+      "title": "Zero Home: subscription does not include it",
+      "description": "Your Zero subscription does not include the smart home. Renew or upgrade it here: {manage_url}\n\nThe link starts by itself once it does."
     }
   },
   "entity": {

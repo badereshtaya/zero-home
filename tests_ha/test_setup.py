@@ -179,3 +179,66 @@ async def test_external_url_not_overwritten(hass: HomeAssistant):
             await hass.async_block_till_done()
     finally:
         await relay.stop()
+
+
+# ── 1.3.1: one linking method per account (ROUND2 §A) ──────────────────────────────────────────
+def cfg_state(state, **kw):
+    c = cfg(**kw)
+    c["home"]["state"] = state
+    return c
+
+
+async def test_account_uses_external_then_switches(hass: HomeAssistant):
+    relay = FakeRelay("h_test", TOKEN)
+    await relay.start()
+    get_cfg = AsyncMock(return_value=cfg_state("method_external"))
+    try:
+        entry = await _entry(hass, relay, with_relay=False)
+        with patch(P + "agent_config", get_cfg), patch(P + "activate", AsyncMock(return_value=creds(relay))) as act, \
+                patch("custom_components.zero_home.link.proxy.LocalHA.check_ui_ready", return_value=True):
+            assert await hass.config_entries.async_setup(entry.entry_id)
+            await hass.async_block_till_done()
+            rt = entry.runtime_data
+            # no relay, no activate, a read-only note with the account page
+            assert rt.agent is None and act.await_count == 0 and rt.home_state == "method_external"
+            issue = ir.async_get(hass).async_get_issue(DOMAIN, "home_state")
+            assert issue is not None and issue.translation_key == "home_method_external"
+            assert issue.translation_placeholders["manage_url"].endswith("#home")
+            assert hass.states.async_all("binary_sensor")[0].state == "off"
+            # still not ready on the next poll: nothing is retried
+            await rt.refresh_config()
+            await hass.async_block_till_done()
+            assert act.await_count == 0
+            # the person switches to Zero Home on the site → linked within the next poll
+            get_cfg.return_value = cfg_state("ready")
+            await rt.refresh_config()
+            await hass.async_block_till_done()
+            await asyncio.wait_for(relay.connected.wait(), 10)
+            assert act.await_count == 1
+            assert ir.async_get(hass).async_get_issue(DOMAIN, "home_state") is None
+            rt = entry.runtime_data
+            # switched off again → the relay stops and its key is dropped
+            get_cfg.return_value = cfg_state("home_disabled")
+            await rt.refresh_config()
+            await hass.async_block_till_done()
+            assert rt.connected is False and entry.data["agent_token"] == ""
+            assert ir.async_get(hass).async_get_issue(DOMAIN, "home_state").translation_key == "home_home_disabled"
+            assert await hass.config_entries.async_unload(entry.entry_id)
+            await hass.async_block_till_done()
+    finally:
+        await relay.stop()
+
+
+async def test_activate_409_is_shown_not_retried(hass: HomeAssistant):
+    entry = await _entry(hass, None, with_relay=False)
+    err = A.AccountError("home_disabled", "off", 409, {"manage_url": "https://zeroapp.eshtaya.ps/account.html#home-x"})
+    with patch(P + "agent_config", AsyncMock(return_value=cfg_state("ready"))), \
+            patch(P + "activate", AsyncMock(side_effect=err)) as act:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        rt = entry.runtime_data
+        assert act.await_count == 1 and rt.home_state == "home_disabled" and rt.agent is None
+        issue = ir.async_get(hass).async_get_issue(DOMAIN, "home_state")
+        assert issue.translation_placeholders["manage_url"].endswith("#home-x")
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()

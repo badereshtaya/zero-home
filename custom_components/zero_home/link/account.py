@@ -24,12 +24,17 @@ ERR_2FA = "need_2fa"
 _RELAY_KEYS = ("home_id", "agent_token", "relay_ws", "public_url", "subdomain")
 
 
+# the account chose another way (ROUND2 §A): not an error to retry — wait for the account to change it
+HOME_STATES_OFF = ("method_external", "home_disabled", "not_chosen", "plan")
+
+
 class AccountError(Exception):
-    def __init__(self, kind: str, message: str = "", status: int = 0) -> None:
+    def __init__(self, kind: str, message: str = "", status: int = 0, data: dict | None = None) -> None:
         super().__init__(message or kind)
         self.kind = kind
         self.message = message
         self.status = status
+        self.data = data or {}
 
 
 class Revoked(AccountError):
@@ -76,6 +81,8 @@ async def call(session: aiohttp.ClientSession, admin_api: str, action: str, body
 def _fail(status: int, data: dict) -> AccountError:
     code = str(data.get("code") or "").lower()
     msg = str(data.get("message") or data.get("error") or "")
+    if code in ("method_external", "home_disabled", "not_chosen"):
+        return AccountError(code, msg, status, data)
     if status == 429 or code in ("rate", "rate_limited", "too_many"):
         return AccountError(ERR_RATE, msg, status)
     if code == "plan":
@@ -138,6 +145,13 @@ async def agent_config(session, admin_api: str, token: str) -> dict:
     if status == 200 and data.get("ok") is True and isinstance(data.get("config"), dict):
         return data
     raise _fail(status, data)
+
+
+def home_state(cfg: dict) -> str:
+    """ha_agent_config → ready | method_external | home_disabled | not_chosen | plan (older servers: ready)."""
+    home = (cfg or {}).get("home") or {}
+    st = str(home.get("state") or "ready")
+    return st if st in ("ready",) + HOME_STATES_OFF else "ready"
 
 
 def options_from_config(cfg: dict) -> dict[str, Any]:
