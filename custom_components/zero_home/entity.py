@@ -6,7 +6,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
 
-from .const import AGENT_VERSION, CONF_PUBLIC_URL, DOMAIN, NAME, SIGNAL_STATUS
+from .const import AGENT_VERSION, DOMAIN, MANAGE_URL, NAME, SIGNAL_STATUS
 
 
 class ZeroHomeEntity(Entity):
@@ -21,7 +21,8 @@ class ZeroHomeEntity(Entity):
             identifiers={(DOMAIN, entry.entry_id)}, name=NAME, manufacturer="Zero",
             model="Zero Home Link", sw_version=AGENT_VERSION,
             entry_type=DeviceEntryType.SERVICE,
-            configuration_url=entry.data.get(CONF_PUBLIC_URL) or None)
+            # every setting lives on the account page of Zero's site
+            configuration_url=MANAGE_URL)
 
     @property
     def runtime(self):

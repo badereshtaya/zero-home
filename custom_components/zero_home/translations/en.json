@@ -2,183 +2,57 @@
   "config": {
     "step": {
       "user": {
-        "title": "Step 1 of 4 — Zero Home",
-        "description": "Zero Home links this Home Assistant to your Zero account, so Zero can control your home from anywhere — no router settings, no domain of your own, nothing to change in configuration.yaml.\n\nYou will: 1) sign in to Zero, 2) choose what Zero can see, 3) decide whether Home Assistant's own screens open from outside (off by default). Press Submit to start."
+        "title": "Zero Home",
+        "description": "Link this Home Assistant to your Zero account. There is nothing to set here: what Zero may see and whether Home Assistant opens from outside are managed in your account on Zero's site.\n\nHow do you want to sign in?",
+        "menu_options": {
+          "login": "With my Zero username and password",
+          "qr": "With a QR code (approve it from my account)"
+        }
+      },
+      "reauth": {
+        "title": "Sign in to Zero again",
+        "description": "This Home Assistant was signed out of your Zero account (from the account page, or the password changed). Sign in again to reconnect the home.",
+        "menu_options": {
+          "login": "With my Zero username and password",
+          "qr": "With a QR code (approve it from my account)"
+        }
       },
       "login": {
         "title": "Sign in with your Zero account",
-        "description": "Use the same username and password you sign in to Zero with. The home's address will be your username: https://<username>.home.<domain>. Your plan must include the smart home.",
+        "description": "Use the same username and password you sign in to Zero with. Your plan must include the smart home.",
         "data": {
           "username": "Zero username",
           "password": "Password",
           "admin_api": "Zero Admin API address"
         },
         "data_description": {
-          "username": "Exactly as you sign in to Zero.",
           "admin_api": "Leave as it is unless Zero support told you otherwise."
         }
       },
-      "code": {
-        "title": "Activation code",
-        "description": "Enter the activation code from your Zero account page (My account → Smart home → Zero Home). It looks like ZH-XXXX-XXXX-XXXX, is valid for 24 hours and works once.",
-        "data": {
-          "code": "Activation code",
-          "admin_api": "Zero Admin API address"
-        },
-        "data_description": {
-          "code": "Lowercase letters and spaces are fine.",
-          "admin_api": "Leave as it is unless Zero support told you otherwise."
-        }
-      },
-      "reauth_confirm": {
-        "title": "Link this home again",
-        "description": "Zero stopped this link (the key was replaced or revoked, or the subscription no longer includes Zero Home). Sign in again with your Zero username and password — or enter a new activation code instead.",
-        "data": {
-          "username": "Zero username",
-          "password": "Password",
-          "code": "Or: a new activation code"
-        }
-      },
-      "method": {
-        "title": "Sign in to Zero",
-        "description": "How do you want to link this home?",
-        "menu_options": {
-          "login": "With my Zero username and password (recommended)",
-          "code": "I have an activation code (ZH-…)"
-        }
-      },
-      "see": {
-        "title": "Step 2 of 4 — What can Zero see?",
-        "description": "Choose which devices Zero may see and control. You can change this any time from the integration's «Configure» button.\n\n• **Everything** — simplest, recommended.\n• **Only some rooms** or **only some device types** — you pick on the next screen.",
-        "data": {
-          "see": "What Zero may see and control"
-        }
-      },
-      "see_rooms": {
-        "title": "Choose the rooms",
-        "description": "Zero will see and control only the devices in these rooms.",
-        "data": {
-          "expose_areas": "Rooms"
-        }
-      },
-      "see_types": {
-        "title": "Choose the device types",
-        "description": "Zero will see and control only these kinds of devices (lights, switches, air conditioning…).",
-        "data": {
-          "expose_domains": "Device types"
-        }
-      },
-      "see_custom": {
-        "title": "Choose exactly",
-        "description": "A device is visible to Zero when it is in one of the chosen rooms, OR of one of the chosen types, OR has one of the chosen labels, OR is listed.",
-        "data": {
-          "expose_areas": "Rooms",
-          "expose_domains": "Device types",
-          "expose_labels": "Labels",
-          "expose_entities": "Devices"
-        }
-      },
-      "outside": {
-        "title": "Step 3 of 4 — Home Assistant's own screens from outside?",
-        "description": "Zero controls your home from anywhere either way — by voice and in the Zero app.\n\nThis choice is only about opening **Home Assistant's own web interface** from outside the home at {public_url}. It stays **off** unless you turn it on, and you can change it any time. No changes to configuration.yaml are needed.",
-        "data": {
-          "remote_ui": "Open Home Assistant's interface from outside"
-        }
-      },
-      "done": {
-        "title": "Step 4 of 4 — Ready",
-        "description": "Your home's address: **{public_url}**\n\n• Zero sees: {see} {see_detail}\n• Home Assistant's interface from outside: {outside}\n\nPress Submit — the home connects within a few seconds. The «Connected» sensor of Zero Home shows the status."
+      "qr_failed": {
+        "title": "Sign in with a QR code",
+        "description": "Press Submit to show a new code."
       }
     },
+    "progress": {
+      "wait_qr": "Scan this code with your phone's camera and approve it in your Zero account — or open **{site}** and type the code.\n\n![QR]({qr})\n\n**{code}**\n\nThe code changes by itself every {minutes} minutes. This screen continues on its own once you approve."
+    },
     "error": {
-      "invalid_format": "This is not an activation code. It looks like ZH-XXXX-XXXX-XXXX.",
-      "rejected": "Zero did not accept the code: {server_message}",
-      "code_invalid": "Zero does not know this code. Check it on your account page.",
-      "code_used": "This code was already used. Create a new one on your account page.",
-      "code_expired": "This code has expired (codes are valid for 24 hours). Create a new one.",
-      "plan": "Your Zero subscription does not include Zero Home. {server_message}",
-      "rate_limited": "Too many attempts. Wait an hour and try again.",
-      "cannot_connect": "Cannot reach Zero. Check this Home Assistant's internet connection and try again.",
-      "bad_answer": "Zero answered in an unexpected way. Try again later or contact Zero support.",
-      "invalid_auth": "Wrong Zero username or password. Use the same account you sign in to Zero with.",
-      "nothing_selected": "Choose at least one."
+      "invalid_auth": "Wrong Zero username or password.",
+      "plan": "Your Zero subscription does not include the smart home. {server_message}",
+      "rate_limited": "Too many attempts. Wait a little and try again.",
+      "cannot_connect": "Cannot reach Zero. Check the internet connection and try again.",
+      "bad_answer": "Zero answered in an unexpected way. Try again later.",
+      "rejected": "Zero did not accept the sign-in: {server_message}",
+      "need_2fa": "This account uses two-step sign-in: sign in with a QR code instead.",
+      "denied": "The sign-in was refused from the account.",
+      "expired": "The code expired."
     },
     "abort": {
-      "single_instance_allowed": "Zero Home is already set up. One home per Home Assistant.",
+      "single_instance_allowed": "Zero Home is already set up.",
       "already_configured": "Zero Home is already set up.",
-      "reauth_successful": "The home is linked again."
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Step 2 of 4 — What can Zero see?",
-        "description": "Choose which devices Zero may see and control. You can change this any time from the integration's «Configure» button.\n\n• **Everything** — simplest, recommended.\n• **Only some rooms** or **only some device types** — you pick on the next screen.",
-        "data": {
-          "see": "What Zero may see and control"
-        }
-      },
-      "see_rooms": {
-        "title": "Choose the rooms",
-        "description": "Zero will see and control only the devices in these rooms.",
-        "data": {
-          "expose_areas": "Rooms"
-        }
-      },
-      "see_types": {
-        "title": "Choose the device types",
-        "description": "Zero will see and control only these kinds of devices (lights, switches, air conditioning…).",
-        "data": {
-          "expose_domains": "Device types"
-        }
-      },
-      "see_custom": {
-        "title": "Choose exactly",
-        "description": "A device is visible to Zero when it is in one of the chosen rooms, OR of one of the chosen types, OR has one of the chosen labels, OR is listed.",
-        "data": {
-          "expose_areas": "Rooms",
-          "expose_domains": "Device types",
-          "expose_labels": "Labels",
-          "expose_entities": "Devices"
-        }
-      },
-      "outside": {
-        "title": "Step 3 of 4 — Home Assistant's own screens from outside?",
-        "description": "Zero controls your home from anywhere either way — by voice and in the Zero app.\n\nThis choice is only about opening **Home Assistant's own web interface** from outside the home at {public_url}. It stays **off** unless you turn it on, and you can change it any time. No changes to configuration.yaml are needed.",
-        "data": {
-          "remote_ui": "Open Home Assistant's interface from outside"
-        }
-      },
-      "done": {
-        "title": "Summary",
-        "description": "Address: **{public_url}**\nConnection now: {status} ({ui_mode})\n\n• Zero sees: {see} {see_detail}\n• Home Assistant's interface from outside: {outside}\n\nPress Submit to save."
-      },
-      "external_url": {
-        "title": "Replace the external URL?",
-        "description": "Home Assistant's external URL is already {current}. Replace it with {public_url}?",
-        "data": {
-          "replace_external_url": "Replace it with the Zero Home address"
-        }
-      }
-    },
-    "error": {
-      "nothing_selected": "Choose at least one."
-    }
-  },
-  "selector": {
-    "expose_mode": {
-      "options": {
-        "all": "Every entity",
-        "select": "Only the areas, domains, labels or entities I choose"
-      }
-    },
-    "see": {
-      "options": {
-        "all": "Everything (recommended)",
-        "rooms": "Only some rooms",
-        "types": "Only some device types",
-        "custom": "Choose exactly (rooms, types, labels, devices)"
-      }
+      "reauth_successful": "Signed in again — the home reconnects in a few seconds.",
+      "wrong_account": "That is a different Zero account. Sign in with the account this home belongs to, or remove the integration and add it again."
     }
   },
   "issues": {
@@ -187,12 +61,12 @@
       "description": "Through Zero Home every visitor reaches Home Assistant as if they were at home, so the web interface from outside stays closed while Home Assistant gives home-network visitors extra rights ({blocker}).\n\nTo open it: turn off «Can only log in from the local network» for those users (Settings → People), or remove the «trusted networks» login. If your Home Assistant version still accepts it, adding these lines to `configuration.yaml` also works:\n\n```yaml\n{yaml}\n```\n\nVoice control and Zero's control of your devices work without it."
     },
     "link_revoked": {
-      "title": "Zero Home: the link was stopped",
-      "description": "Zero no longer accepts this home's key (it was revoked or replaced by a newer activation). Open Settings → Devices & services → Zero Home and enter a new activation code from your Zero account page."
+      "title": "Zero Home: the home link was refused",
+      "description": "Zero's relay keeps refusing this home's key. It retries by itself; if this stays, open your account on Zero's site → Smart home, or sign in again from Settings → Devices & services → Zero Home."
     },
     "plan_ended": {
       "title": "Zero Home: subscription does not include it",
-      "description": "Your Zero subscription no longer includes Zero Home, so the link is stopped. Renew or upgrade the subscription, then enter a new activation code in Settings → Devices & services → Zero Home."
+      "description": "Your Zero subscription does not include the smart home, so the home link is stopped. Renew or upgrade it in your account on Zero's site; the integration reconnects by itself."
     },
     "relay_unreachable": {
       "title": "Zero Home: cannot reach the Zero relay",
@@ -201,6 +75,10 @@
     "external_url_conflict": {
       "title": "Zero Home: external URL already set",
       "description": "Home Assistant's external URL is {current}, so Zero Home did not change it to {public_url}. To use the Zero Home address in the mobile apps, open the Zero Home options and confirm the replacement."
+    },
+    "signed_out": {
+      "title": "Zero Home: signed out of the Zero account",
+      "description": "This Home Assistant was signed out of your Zero account (from the account page, or the password changed), so the home link is stopped. Open Settings → Devices & services → Zero Home and sign in again."
     }
   },
   "entity": {
@@ -211,7 +89,10 @@
     },
     "sensor": {
       "public_url": {
-        "name": "Public address"
+        "name": "Home address"
+      },
+      "account": {
+        "name": "Zero account"
       }
     }
   }

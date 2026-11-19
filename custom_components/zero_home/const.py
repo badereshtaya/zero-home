@@ -3,7 +3,7 @@ from __future__ import annotations
 
 DOMAIN = "zero_home"
 NAME = "Zero Home"
-AGENT_VERSION = "1.2.0"
+AGENT_VERSION = "1.3.0"
 
 DEFAULT_ADMIN_API = "https://zeroadmin.eshtaya.ps/api.php"
 
@@ -17,6 +17,14 @@ CONF_PUBLIC_URL = "public_url"
 CONF_SUBDOMAIN = "subdomain"
 CONF_ZERO_WEB_ORIGIN = "zero_web_origin"
 CONF_OWNER_NAME = "owner_name"
+# 1.3.0: the device token of the Zero account (never expires; ends only when the account signs this integration out)
+CONF_DEVICE_TOKEN = "device_token"
+CONF_DISPLAY_NAME = "display_name"
+CONF_USER_ID = "user_id"
+RELAY_KEYS = ("home_id", "agent_token", "relay_ws", "public_url", "subdomain", "zero_web_origin", "owner_name")
+QR_PATH = "/api/zero_home/qr"
+MANAGE_URL = "https://zero.eshtaya.ps/account.html#home"   # the account page (rebranded per deployment)
+CONFIG_REFRESH_S = 60                 # ha_agent_config: the settings managed on the account page
 
 # options
 OPT_EXPOSE_MODE = "expose_mode"          # "all" | "select"
@@ -54,6 +62,7 @@ ISSUE_REVOKED = "link_revoked"
 ISSUE_PLAN = "plan_ended"
 ISSUE_UNREACHABLE = "relay_unreachable"
 ISSUE_EXTERNAL_URL = "external_url_conflict"
+ISSUE_SIGNED_OUT = "signed_out"
 
 TRUSTED_PROXY_YAML = """http:
   use_x_forwarded_for: true

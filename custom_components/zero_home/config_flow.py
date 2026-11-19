@@ -1,336 +1,195 @@
-"""Config, reauth and options flows for Zero Home — a short wizard (1.2.0, 2026-11-19).
+"""Sign-in for Zero Home (1.3.0): the Zero account (username + password) or a QR code approved from the account page.
 
-Set-up:   welcome → sign in (Zero account, or a ZH- code) → what Zero may see → the web interface from
-          outside (off unless the person turns it on) → summary.
-Options:  the same three choices again (what Zero sees → outside → summary with the live status).
+Nothing else is set here: what Zero may see, the web interface from outside and everything about the home are
+managed on the account page of Zero's site (the integration reads them with ha_agent_config). There is no options
+flow and no sign-out — the integration stays signed in until the account signs it out.
 """
 from __future__ import annotations
 
+import asyncio
+import io
+import secrets
+import time
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, __version__ as HA_VERSION
-from homeassistant.core import callback
-from homeassistant.helpers import instance_id, selector
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
-    AGENT_VERSION, CONF_ADMIN_API, CONF_AGENT_TOKEN, CONF_CODE, CONF_HOME_ID, CONF_OWNER_NAME,
-    CONF_PUBLIC_URL, CONF_RELAY_WS, CONF_SUBDOMAIN, CONF_ZERO_WEB_ORIGIN, DEFAULT_ADMIN_API,
-    DEFAULT_OPTIONS, DOMAIN, MODE_ALL, MODE_SELECT, NAME, OPT_EXPOSE_AREAS, OPT_EXPOSE_DOMAINS,
-    OPT_EXPOSE_ENTITIES, OPT_EXPOSE_LABELS, OPT_EXPOSE_MODE, OPT_EXPOSE_UI, OPT_REMOTE_UI,
-    OPT_REPLACE_EXTERNAL_URL, OPT_SET_EXTERNAL_URL,
+    AGENT_VERSION, CONF_ADMIN_API, CONF_DEVICE_TOKEN, CONF_DISPLAY_NAME, CONF_USER_ID, DEFAULT_ADMIN_API, DOMAIN,
+    NAME, QR_PATH,
 )
-from .link.activation import ERR_FORMAT, ActivationError, activate, activate_login, normalize_code
+from .link import account as A
 
-# what Zero may see — the wizard's four simple choices (stored as expose_mode all|select + the lists)
-SEE_ALL, SEE_ROOMS, SEE_TYPES, SEE_CUSTOM = "all", "rooms", "types", "custom"
-SEE_CHOICES = [SEE_ALL, SEE_ROOMS, SEE_TYPES, SEE_CUSTOM]
-# the device types offered first in «by type» (anything present in this home is offered too)
-COMMON_DOMAINS = ["light", "switch", "climate", "fan", "cover", "media_player", "lock", "scene", "script",
-                  "sensor", "binary_sensor", "vacuum", "water_heater", "humidifier", "alarm_control_panel"]
-ADVANCED_EXPOSURE = [OPT_EXPOSE_AREAS, OPT_EXPOSE_DOMAINS, OPT_EXPOSE_LABELS, OPT_EXPOSE_ENTITIES]
+PAIR_GIVE_UP_S = 600           # one QR screen keeps renewing its code for at most 10 minutes
 
 
-def _entry_data(answer: dict, admin_api: str) -> dict:
-    return {
-        CONF_ADMIN_API: admin_api,
-        CONF_HOME_ID: answer["home_id"],
-        CONF_AGENT_TOKEN: answer["agent_token"],
-        CONF_RELAY_WS: answer["relay_ws"],
-        CONF_PUBLIC_URL: answer["public_url"],
-        CONF_SUBDOMAIN: answer["subdomain"],
-        CONF_ZERO_WEB_ORIGIN: answer.get("zero_web_origin") or "",
-        CONF_OWNER_NAME: answer.get("owner_name") or "",
-    }
+def _device(hass) -> tuple[str, str]:
+    loc = (hass.config.location_name or "").strip()
+    return (f"Home Assistant — {loc}" if loc else "Home Assistant"), f"Home Assistant {HA_VERSION}"
 
 
-class _Wizard:
-    """The steps shared by set-up and options: what Zero sees, the interface from outside."""
-
-    hass: Any
-    _opts: dict[str, Any]
-
-    def _domains(self) -> list[str]:
-        present = {eid.split(".", 1)[0] for eid in self.hass.states.async_entity_ids()}
-        first = [d for d in COMMON_DOMAINS if d in present]
-        rest = sorted((present | set(self._opts.get(OPT_EXPOSE_DOMAINS) or [])) - set(first))
-        return first + rest
-
-    def _see_now(self) -> str:
-        if self._opts.get(OPT_EXPOSE_MODE) != MODE_SELECT:
-            return SEE_ALL
-        ui = self._opts.get(OPT_EXPOSE_UI)
-        return ui if ui in SEE_CHOICES else SEE_CUSTOM
-
-    def _see_schema(self) -> vol.Schema:
-        return vol.Schema({vol.Required("see", default=self._see_now()): selector.SelectSelector(
-            selector.SelectSelectorConfig(options=SEE_CHOICES, translation_key="see",
-                                          mode=selector.SelectSelectorMode.LIST))})
-
-    def _set_see(self, choice: str, **lists: list) -> None:
-        for k in ADVANCED_EXPOSURE:
-            self._opts[k] = list(lists.get(k) or [])
-        self._opts[OPT_EXPOSE_UI] = choice
-        self._opts[OPT_EXPOSE_MODE] = MODE_ALL if choice == SEE_ALL else MODE_SELECT
-
-    async def _see_step(self, step_id: str, user_input: dict | None):
-        if user_input is not None:
-            choice = user_input.get("see", SEE_ALL)
-            if choice == SEE_ALL:
-                self._set_see(SEE_ALL)
-                return await self.async_step_outside()
-            return await getattr(self, f"async_step_see_{choice}")()
-        return self.async_show_form(step_id=step_id, data_schema=self._see_schema(), last_step=False)
-
-    async def async_step_see_rooms(self, user_input: dict | None = None):
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            areas = list(user_input.get(OPT_EXPOSE_AREAS) or [])
-            if areas:
-                self._set_see(SEE_ROOMS, **{OPT_EXPOSE_AREAS: areas})
-                return await self.async_step_outside()
-            errors["base"] = "nothing_selected"
-        schema = vol.Schema({vol.Optional(OPT_EXPOSE_AREAS, default=self._opts.get(OPT_EXPOSE_AREAS) or []):
-                             selector.AreaSelector(selector.AreaSelectorConfig(multiple=True))})
-        return self.async_show_form(step_id="see_rooms", data_schema=schema, errors=errors, last_step=False)
-
-    async def async_step_see_types(self, user_input: dict | None = None):
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            doms = list(user_input.get(OPT_EXPOSE_DOMAINS) or [])
-            if doms:
-                self._set_see(SEE_TYPES, **{OPT_EXPOSE_DOMAINS: doms})
-                return await self.async_step_outside()
-            errors["base"] = "nothing_selected"
-        default = self._opts.get(OPT_EXPOSE_DOMAINS) or [d for d in ("light", "switch", "climate", "cover", "fan")
-                                                          if d in self._domains()]
-        schema = vol.Schema({vol.Optional(OPT_EXPOSE_DOMAINS, default=default): selector.SelectSelector(
-            selector.SelectSelectorConfig(options=self._domains(), multiple=True, custom_value=True,
-                                          mode=selector.SelectSelectorMode.DROPDOWN))})
-        return self.async_show_form(step_id="see_types", data_schema=schema, errors=errors, last_step=False)
-
-    async def async_step_see_custom(self, user_input: dict | None = None):
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            lists = {k: list(user_input.get(k) or []) for k in ADVANCED_EXPOSURE}
-            if any(lists.values()):
-                self._set_see(SEE_CUSTOM, **lists)
-                return await self.async_step_outside()
-            errors["base"] = "nothing_selected"
-        fields: dict = {
-            vol.Optional(OPT_EXPOSE_AREAS, default=self._opts.get(OPT_EXPOSE_AREAS) or []):
-                selector.AreaSelector(selector.AreaSelectorConfig(multiple=True)),
-            vol.Optional(OPT_EXPOSE_DOMAINS, default=self._opts.get(OPT_EXPOSE_DOMAINS) or []):
-                selector.SelectSelector(selector.SelectSelectorConfig(
-                    options=self._domains(), multiple=True, custom_value=True,
-                    mode=selector.SelectSelectorMode.DROPDOWN)),
-        }
-        if hasattr(selector, "LabelSelector"):
-            fields[vol.Optional(OPT_EXPOSE_LABELS, default=self._opts.get(OPT_EXPOSE_LABELS) or [])] = \
-                selector.LabelSelector(selector.LabelSelectorConfig(multiple=True))
-        fields[vol.Optional(OPT_EXPOSE_ENTITIES, default=self._opts.get(OPT_EXPOSE_ENTITIES) or [])] = \
-            selector.EntitySelector(selector.EntitySelectorConfig(multiple=True))
-        return self.async_show_form(step_id="see_custom", data_schema=vol.Schema(fields), errors=errors, last_step=False)
-
-    # the web interface from outside: an explicit choice, OFF unless the person turns it on
-    async def async_step_outside(self, user_input: dict | None = None):
-        if user_input is not None:
-            on = bool(user_input.get(OPT_REMOTE_UI))
-            self._opts[OPT_REMOTE_UI] = on
-            # the official apps use the public address only when the interface is open from outside
-            self._opts[OPT_SET_EXTERNAL_URL] = on
-            if not on:
-                self._opts[OPT_REPLACE_EXTERNAL_URL] = False
-            return await self.async_step_done()
-        schema = vol.Schema({vol.Required(OPT_REMOTE_UI, default=bool(self._opts.get(OPT_REMOTE_UI, False))): bool})
-        return self.async_show_form(step_id="outside", data_schema=schema, last_step=False,
-                                    description_placeholders={"public_url": self._public_url() or "—"})
-
-    def _public_url(self) -> str:
-        raise NotImplementedError
-
-    def _summary(self) -> dict[str, str]:
-        see = self._see_now()
-        parts = {SEE_ROOMS: self._opts.get(OPT_EXPOSE_AREAS), SEE_TYPES: self._opts.get(OPT_EXPOSE_DOMAINS)}
-        detail = ", ".join(str(x) for x in (parts.get(see) or []))
-        return {"public_url": self._public_url() or "—", "see": see, "see_detail": detail or "—",
-                "outside": "on" if self._opts.get(OPT_REMOTE_UI) else "off"}
+def qr_svg(payload: str) -> bytes:
+    import segno   # manifest requirement
+    buf = io.BytesIO()
+    segno.make(payload, error="m").save(buf, kind="svg", scale=6, border=2, dark="#111111", light="#ffffff")
+    return buf.getvalue()
 
 
-class ZeroHomeConfigFlow(_Wizard, ConfigFlow, domain=DOMAIN):
-    """Two ways to link: the Zero account itself (username + password — the address is the account's username)
-    or an activation code from the account page."""
-    VERSION = 1
+class ZeroHomeConfigFlow(ConfigFlow, domain=DOMAIN):
+    VERSION = 2
 
     def __init__(self) -> None:
         self._reauth_entry: ConfigEntry | None = None
-        self._answer: dict | None = None
         self._admin_api = DEFAULT_ADMIN_API
-        self._opts = dict(DEFAULT_OPTIONS)
+        self._pair: dict | None = None
+        self._pair_task: asyncio.Task | None = None
+        self._pair_result: dict | None = None
+        self._qr_key = ""
+        self._error = ""
+        self._pair_since = 0.0
 
-    def _public_url(self) -> str:
-        return (self._answer or {}).get("public_url") or ""
-
-    async def _run(self, call) -> tuple[dict | None, dict, dict]:
-        """(answer, errors, placeholders) of one activation attempt."""
-        errors: dict[str, str] = {}
-        placeholders = {"server_message": ""}
-        try:
-            answer = await call(async_get_clientsession(self.hass), instance_id=await instance_id.async_get(self.hass),
-                                ha_version=HA_VERSION, agent_version=AGENT_VERSION)
-            return answer, errors, placeholders
-        except ActivationError as err:
-            errors[CONF_CODE if err.kind == ERR_FORMAT else "base"] = err.kind
-            placeholders["server_message"] = err.message or ""
-            return None, errors, placeholders
-
-    async def _activate(self, code: str, admin_api: str) -> tuple[dict | None, dict, dict]:
-        try:
-            normalize_code(code)
-        except ActivationError as err:
-            return None, {CONF_CODE: err.kind}, {"server_message": ""}
-        return await self._run(lambda session, **kw: activate(session, admin_api, code, **kw))
-
-    async def _login(self, username: str, password: str, admin_api: str) -> tuple[dict | None, dict, dict]:
-        return await self._run(lambda session, **kw: activate_login(session, admin_api, username, password, **kw))
-
-    def _code_schema(self, user_input: dict | None, *, with_api: bool) -> vol.Schema:
-        user_input = user_input or {}
-        fields: dict = {vol.Required(CONF_CODE, default=user_input.get(CONF_CODE, "")): str}
-        if with_api:
-            fields[vol.Optional(CONF_ADMIN_API, default=user_input.get(CONF_ADMIN_API, DEFAULT_ADMIN_API))] = str
-        return vol.Schema(fields)
-
-    def _login_schema(self, user_input: dict | None, *, with_api: bool) -> vol.Schema:
-        user_input = user_input or {}
-        fields: dict = {
-            vol.Required(CONF_USERNAME, default=user_input.get(CONF_USERNAME, "")): str,
-            vol.Required(CONF_PASSWORD): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
-        }
-        if with_api:
-            fields[vol.Optional(CONF_ADMIN_API, default=user_input.get(CONF_ADMIN_API, DEFAULT_ADMIN_API))] = str
-        return vol.Schema(fields)
-
-    async def _linked(self, answer: dict, admin_api: str) -> ConfigFlowResult:
+    # ── shared ────────────────────────────────────────────────────────────
+    async def _signed_in(self, token: str, user: dict) -> ConfigFlowResult:
+        data = {CONF_ADMIN_API: self._admin_api, CONF_DEVICE_TOKEN: token,
+                CONF_USERNAME: str(user.get("username") or ""), CONF_DISPLAY_NAME: str(user.get("display_name") or ""),
+                CONF_USER_ID: user.get("id")}
+        if self._reauth_entry is not None:
+            # same account only: a different person signing in here would take over this home
+            old = self._reauth_entry.data.get(CONF_USERNAME)
+            if old and data[CONF_USERNAME] and old.lower() != data[CONF_USERNAME].lower():
+                return self.async_abort(reason="wrong_account")
+            # the relay key stays; if it was refused it is renewed with the new token at start
+            return self.async_update_reload_and_abort(self._reauth_entry, data={**self._reauth_entry.data, **data},
+                                                      reason="reauth_successful")
         await self.async_set_unique_id(DOMAIN)
         self._abort_if_unique_id_configured()
-        self._answer, self._admin_api = answer, admin_api
-        return await self.async_step_see()
+        title = f"{NAME} — {data[CONF_DISPLAY_NAME] or data[CONF_USERNAME]}"
+        return self.async_create_entry(title=title, data=data)
 
-    # 1. welcome
+    # ── start: account or QR ──────────────────────────────────────────────
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if self._async_current_entries():
+        if self._reauth_entry is None and self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
-        if user_input is not None:
-            return await self.async_step_method()
-        return self.async_show_form(step_id="user", data_schema=vol.Schema({}), last_step=False)
+        return self.async_show_menu(step_id="user", menu_options=["login", "qr"])
 
-    # 2. sign in
-    async def async_step_method(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return self.async_show_menu(step_id="method", menu_options=["login", "code"])
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        if self._reauth_entry is not None:
+            self._admin_api = self._reauth_entry.data.get(CONF_ADMIN_API) or DEFAULT_ADMIN_API
+        return self.async_show_menu(step_id="reauth", menu_options=["login", "qr"])
 
+    # ── username + password ────────────────────────────────────────────────
     async def async_step_login(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         placeholders = {"server_message": ""}
         if user_input is not None:
-            admin_api = (user_input.get(CONF_ADMIN_API) or DEFAULT_ADMIN_API).strip()
-            answer, errors, placeholders = await self._login(user_input[CONF_USERNAME], user_input[CONF_PASSWORD], admin_api)
-            if answer is not None:
-                return await self._linked(answer, admin_api)
-        return self.async_show_form(step_id="login", data_schema=self._login_schema(user_input, with_api=self.show_advanced_options),
-                                    errors=errors, description_placeholders=placeholders, last_step=False)
+            if self.show_advanced_options and user_input.get(CONF_ADMIN_API):
+                self._admin_api = user_input[CONF_ADMIN_API].strip()
+            device, platform = _device(self.hass)
+            try:
+                ans = await A.login(async_get_clientsession(self.hass), self._admin_api, user_input[CONF_USERNAME],
+                                    user_input[CONF_PASSWORD], device=device, platform=platform, app_version=AGENT_VERSION)
+                return await self._signed_in(str(ans["token"]), ans.get("user") or {"username": user_input[CONF_USERNAME]})
+            except A.AccountError as err:
+                errors["base"] = err.kind if err.kind != "revoked" else A.ERR_AUTH
+                placeholders["server_message"] = err.message
+        fields: dict = {
+            vol.Required(CONF_USERNAME, default=(user_input or {}).get(CONF_USERNAME, "")): str,
+            vol.Required(CONF_PASSWORD): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+        }
+        if self.show_advanced_options:
+            fields[vol.Optional(CONF_ADMIN_API, default=self._admin_api)] = str
+        return self.async_show_form(step_id="login", data_schema=vol.Schema(fields), errors=errors,
+                                    description_placeholders=placeholders)
 
-    async def async_step_code(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
-        placeholders = {"server_message": ""}
+    # ── QR: the account page approves this Home Assistant ─────────────────────
+    async def async_step_qr(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if not self._pair_since:
+            self._pair_since = time.monotonic()
+        if self._pair_task is None:
+            device, platform = _device(self.hass)
+            try:
+                self._pair = await A.pair_start(async_get_clientsession(self.hass), self._admin_api,
+                                                device_name=device, platform=platform, app_version=AGENT_VERSION)
+            except A.AccountError as err:
+                self._error = err.kind
+                return self.async_show_progress_done(next_step_id="qr_failed")
+            self._show_qr(self._pair)
+            self._pair_task = self.hass.async_create_task(self._wait_pair(), eager_start=False)
+        if not self._pair_task.done():
+            p = self._pair or {}
+            return self.async_show_progress(
+                step_id="qr", progress_action="wait_qr", progress_task=self._pair_task,
+                description_placeholders={"qr": f"{QR_PATH}/{self._qr_key}.svg", "code": str(p.get("code_display") or ""),
+                                          "site": "zero.eshtaya.ps/pair", "minutes": str(max(1, int(p.get("expires_in") or 180) // 60))})
+        self._pair_task = None
+        res = self._pair_result or {}
+        if res.get("status") == "renew" and time.monotonic() - self._pair_since < PAIR_GIVE_UP_S:
+            # the code expired while the screen was open: a new code, a new QR on the same screen
+            self._pair = self._pair_result = None
+            return await self.async_step_qr()
+        if res.get("status") == "approved":
+            return self.async_show_progress_done(next_step_id="qr_ok")
+        self._error = str(res.get("status") or "expired")
+        return self.async_show_progress_done(next_step_id="qr_failed")
+
+    def _show_qr(self, pair: dict) -> None:
+        data = self.hass.data.setdefault(DOMAIN, {})
+        if not data.get("qr_view"):
+            from .qr_view import ZeroHomeQrView
+            self.hass.http.register_view(ZeroHomeQrView())
+            data["qr_view"] = True
+        store = data.setdefault("qr", {})
+        if self._qr_key:
+            store.pop(self._qr_key, None)
+        self._qr_key = secrets.token_urlsafe(16)
+        store[self._qr_key] = qr_svg(str(pair.get("qr_payload") or pair.get("qr_url") or ""))
+
+    async def _wait_pair(self) -> None:
+        """Poll until the account approves or refuses; an expired code ends the wait with «renew»."""
+        session = async_get_clientsession(self.hass)
+        p = self._pair or {}
+        while True:
+            await asyncio.sleep(max(1.0, float(p.get("poll_every") or 2)))
+            try:
+                res = await A.pair_poll(session, self._admin_api, str(p.get("pair_id")), str(p.get("poll_secret")))
+            except A.AccountError:
+                continue                         # a network hiccup: keep trying
+            st = res.get("status")
+            if st in ("approved", "denied"):
+                self._pair_result = res
+                return
+            if st in ("expired", "claimed", "unknown"):
+                self._pair_result = {"status": "renew"}
+                return
+
+    def async_remove(self) -> None:
+        """The flow was closed: stop polling, drop the QR image."""
+        if self._pair_task is not None and not self._pair_task.done():
+            self._pair_task.cancel()
+        if self._qr_key:
+            self.hass.data.get(DOMAIN, {}).get("qr", {}).pop(self._qr_key, None)
+
+    async def async_step_qr_ok(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        res = self._pair_result or {}
+        token = str(res.get("device_token") or (res.get("login") or {}).get("token") or "")
+        user = res.get("user") or (res.get("login") or {}).get("user") or {}
+        if self._qr_key:
+            self.hass.data.get(DOMAIN, {}).get("qr", {}).pop(self._qr_key, None)
+        if not token:
+            self._error = A.ERR_ANSWER
+            return await self.async_step_qr_failed()
+        return await self._signed_in(token, user)
+
+    async def async_step_qr_failed(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            admin_api = (user_input.get(CONF_ADMIN_API) or DEFAULT_ADMIN_API).strip()
-            answer, errors, placeholders = await self._activate(user_input[CONF_CODE], admin_api)
-            if answer is not None:
-                return await self._linked(answer, admin_api)
-        return self.async_show_form(step_id="code", data_schema=self._code_schema(user_input, with_api=self.show_advanced_options),
-                                    errors=errors, description_placeholders=placeholders, last_step=False)
-
-    # 3. what Zero may see (+ see_rooms / see_types / see_custom), 4. outside (in _Wizard)
-    async def async_step_see(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return await self._see_step("see", user_input)
-
-    # 5. summary
-    async def async_step_done(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None and self._answer is not None:
-            title = f"{NAME} — {self._answer.get('subdomain')}"
-            return self.async_create_entry(title=title, data=_entry_data(self._answer, self._admin_api), options=dict(self._opts))
-        return self.async_show_form(step_id="done", data_schema=vol.Schema({}), description_placeholders=self._summary())
-
-    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
-        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        return await self.async_step_reauth_confirm()
-
-    async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Link again with the Zero account (the usual way); an activation code still works."""
-        entry = self._reauth_entry
-        errors: dict[str, str] = {}
-        placeholders = {"server_message": ""}
-        if user_input is not None and entry is not None:
-            admin_api = entry.data.get(CONF_ADMIN_API) or DEFAULT_ADMIN_API
-            if user_input.get(CONF_CODE):
-                answer, errors, placeholders = await self._activate(user_input[CONF_CODE], admin_api)
-            else:
-                answer, errors, placeholders = await self._login(user_input.get(CONF_USERNAME, ""), user_input.get(CONF_PASSWORD, ""), admin_api)
-            if answer is not None:
-                return self.async_update_reload_and_abort(entry, data=_entry_data(answer, admin_api), reason="reauth_successful")
-        user_input = user_input or {}
-        schema = vol.Schema({
-            vol.Optional(CONF_USERNAME, default=user_input.get(CONF_USERNAME, "")): str,
-            vol.Optional(CONF_PASSWORD): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
-            vol.Optional(CONF_CODE, default=user_input.get(CONF_CODE, "")): str,
-        })
-        return self.async_show_form(step_id="reauth_confirm", data_schema=schema, errors=errors, description_placeholders=placeholders)
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> "ZeroHomeOptionsFlow":
-        return ZeroHomeOptionsFlow(config_entry)
-
-
-class ZeroHomeOptionsFlow(_Wizard, OptionsFlow):
-    """The same simple steps: what Zero sees → the interface from outside → summary (with the live status)."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        self._entry = config_entry       # not self.config_entry: works on old and new HA
-        self._opts: dict[str, Any] = {**DEFAULT_OPTIONS, **(config_entry.options or {})}
-
-    def _public_url(self) -> str:
-        return self._entry.data.get(CONF_PUBLIC_URL) or ""
-
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return await self._see_step("init", user_input)
-
-    async def async_step_done(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
-            public_url = self._public_url()
-            current = self.hass.config.external_url
-            if (self._opts.get(OPT_SET_EXTERNAL_URL) and current and public_url
-                    and current.rstrip("/") != public_url.rstrip("/")):
-                return await self.async_step_external_url()
-            return self.async_create_entry(title="", data=dict(self._opts))
-        rt = getattr(self._entry, "runtime_data", None)
-        ph = self._summary()
-        ph["status"] = "online" if getattr(rt, "connected", False) else "offline"
-        ph["ui_mode"] = getattr(rt, "ui_mode", "") or "—"
-        return self.async_show_form(step_id="done", data_schema=vol.Schema({}), description_placeholders=ph)
-
-    async def async_step_external_url(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
-            self._opts[OPT_REPLACE_EXTERNAL_URL] = bool(user_input.get(OPT_REPLACE_EXTERNAL_URL))
-            if not self._opts[OPT_REPLACE_EXTERNAL_URL]:
-                self._opts[OPT_SET_EXTERNAL_URL] = False
-            return self.async_create_entry(title="", data=dict(self._opts))
-        return self.async_show_form(
-            step_id="external_url",
-            data_schema=vol.Schema({vol.Required(OPT_REPLACE_EXTERNAL_URL,
-                                                 default=bool(self._opts.get(OPT_REPLACE_EXTERNAL_URL))): bool}),
-            description_placeholders={"current": self.hass.config.external_url or "",
-                                      "public_url": self._public_url()})
+            self._pair = self._pair_result = None
+            self._pair_since = 0.0
+            return await self.async_step_qr()
+        return self.async_show_form(step_id="qr_failed", data_schema=vol.Schema({}),
+                                    errors={"base": self._error if self._error in (
+                                        "denied", "expired", A.ERR_RATE, A.ERR_CONNECT, A.ERR_ANSWER) else "expired"})

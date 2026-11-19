@@ -11,7 +11,7 @@
 
 ### المتطلبات
 
-- Home Assistant إصدار 2024.6 أو أحدث.
+- Home Assistant إصدار 2024.8 أو أحدث.
 - اشتراك بزيرو بيشمل «زيرو للبيت».
 
 ### التركيب
@@ -27,37 +27,22 @@
 1. انسخ المجلد `custom_components/zero_home` لمجلد `config/custom_components/` عندك.
 2. أعد تشغيل Home Assistant.
 
-### التفعيل
+### تسجيل الدخول (نسخة 1.3.0)
 
-**الطريقة الأسهل — بحساب زيرو (بدون كود):**
+الإعدادات ← الأجهزة والخدمات ← إضافة تكامل ← **Zero Home**، واختار:
 
-1. بـ Home Assistant: الإعدادات ← الأجهزة والخدمات ← إضافة تكامل ← **Zero Home**.
-2. اختار **«سجّل دخول بحساب زيرو»**.
-3. اكتب **نفس اسم المستخدم وكلمة السر** اللي بتدخل فيهم على زيرو. عنوان بيتك بيصير اسم المستخدم تبعك: `https://<اسم المستخدم>.home.eshtaya.ps`.
+- **باسم المستخدم وكلمة السر** تبعك بزيرو، أو
+- **بكود QR:** بيطلع كود على الشاشة — امسحه بكاميرا جوالك أو افتح `zero.eshtaya.ps/pair` واكتب الكود، ووافق من حسابك. الكود بيتجدد لحاله والشاشة بتكمّل لحالها.
 
-لازم باقتك تشمل البيت الذكي («المساعد الشخصي + البيت الذكي»). نفس الخطوات بتلاقيها بمعالج «اربط Home Assistant» جوّا زيرو.
+لازم باقتك تشمل البيت الذكي. عنوان بيتك: `https://<اسم المستخدم>.home.eshtaya.ps`.
 
-**أو برمز تفعيل:** من «حسابي ← البيت الذكي ← زيرو للبيت» خذ رمز `ZH-XXXX-XXXX-XXXX` (لمرة وحدة، صالح 24 ساعة)، وبالخطوة 2 اختار «معي رمز تفعيل».
+### بدون إعدادات جوّا Home Assistant
 
-(بوضع «الخيارات المتقدمة» بتقدر تغيّر عنوان Zero Admin — اتركه مثل ما هو إلا إذا الدعم قلّك.)
-
-### المعالج (نسخة 1.2.0)
-
-الإعداد صار معالج من 4 خطوات: ترحيب ← تسجيل الدخول بزيرو ← **شو بيشوف زيرو** (كل إشي، أو بس غرف، أو بس أنواع أجهزة، أو اختيار دقيق) ← **واجهة Home Assistant من برا؟** ← ملخّص بعنوان بيتك.
-لتعديله بعدين: الإعدادات ← الأجهزة والخدمات ← Zero Home ← «تكوين» — نفس الخطوات وآخرها حالة الاتصال.
-
-- **واجهة Home Assistant من برا:** **مطفية افتراضياً** — بتشغّلها إنت إذا بدك تفتح شاشات Home Assistant على عنوانك العام (وبتبين داخل تبويب «Home Assistant» بزيرو). التحكم من زيرو بالصوت شغّال بكل الأحوال.
-- **العنوان الخارجي:** لما تشغّل الواجهة من برا، الإضافة بتحط عنوانك العام كـ `external_url` (إذا كان عندك عنوان ثاني، ما بنغيّره إلا بعد ما توافق).
-
-### بدون أي تعديل على configuration.yaml
-
-نسخ Home Assistant الجديدة ما بتقبل `trusted_proxies` بالكونفج، فالإضافة صارت تشتغل بـ«الوضع المباشر»: Home Assistant بيشوف الزوار جايين من الإضافة نفسها. عشان هيك، للأمان:
-
-- إذا في مستخدم معلّم عليه «Can only log in from the local network»، أو تسجيل دخول «trusted networks» مفعّل، الواجهة من برا بتضل مسكّرة وبيطلعلك تنبيه (Repairs) بيشرح شو تعمل.
-- الـ webhooks ما بتنفتح من برا عن طريق الربط.
-- محاولات تسجيل الدخول الكتير من نفس الزائر بتنوقف مؤقتاً (الإضافة بتعدّها حسب عنوانه الحقيقي).
-
-(إذا نسختك لسا بتقبل `http: use_x_forwarded_for: true` + `trusted_proxies: [127.0.0.1, ::1]`، الإضافة بتستعملهم لحالها.)
+- الإضافة **بتعرض بس**: الاتصال، عنوان البيت، وحساب زيرو (الاسم، الاشتراك، الأيام الباقية)، وزر بيفتح حسابك.
+- **كل الإعدادات من حسابك على موقع زيرو** (حسابي ← البيت الذكي): شو بيشوف زيرو (كل إشي / غرف / أنواع / أجهزة)، وفتح واجهة Home Assistant من برا (مطفي افتراضياً). الإضافة بتقرا التغييرات خلال دقيقة.
+- **ما في زر خروج.** بتضل داخلة لحد ما تطلّعها من حسابك ← الأجهزة. وقتها الربط بيوقف وHome Assistant بيطلب «ادخل من جديد» (بنفس الحساب).
+- من نسخة قديمة: بعد التحديث بتطلب تسجيل دخول مرة وحدة، والعنوان بيضل نفسه.
+- **ما في داعي لأي تعديل على configuration.yaml.** للأمان: إذا في مستخدم «محلي بس» أو «trusted networks»، الواجهة من برا بتضل مسكّرة وبيطلعلك تنبيه بيشرح؛ الـ webhooks ما بتنفتح من برا؛ ومحاولات الدخول الكتير بتنوقف مؤقتاً.
 
 ### الخصوصية — شو بيمر عن طريق الربط
 
@@ -70,11 +55,12 @@
 
 | المشكلة | الحل |
 |---|---|
-| «ما قدرنا نوصل لزيرو» وقت التفعيل | تأكد إنه Home Assistant متصل بالإنترنت وإنه الوقت مضبوط. |
+| «ما قدرنا نوصل لزيرو» وقت الدخول | تأكد إنه Home Assistant متصل بالإنترنت وإنه الوقت مضبوط. |
 | الحساس «Zero Home» مطفي | شوف سمة `last_error` فيه. الإضافة بتحاول لحالها (1، 2، 5، 10، 30 ثانية وبعدها كل دقيقة). بعد 30 دقيقة بيطلع تنبيه. |
-| تنبيه «الربط توقّف» أو «الاشتراك ما بيشمله» | سجّل دخول من جديد بحساب زيرو (أو رمز تفعيل جديد) بنافذة إعادة المصادقة. |
-| الواجهة من برا بتقول «مسكّرة» | شغّل «افتح واجهة Home Assistant من برّا» من «تكوين». وإذا في تنبيه إنها مسكّرة للأمان، اتبعه (مستخدمين محليين / trusted networks). |
-| تطبيق الموبايل ما بيشتغل من برا | تأكد إنه خيار العنوان الخارجي مفعّل، أو حط العنوان العام بالتطبيق يدوياً. |
+| تنبيه «انطلع من حساب زيرو» | ادخل من جديد (حساب أو QR) من نافذة إعادة الدخول، بنفس الحساب. |
+| تنبيه «الاشتراك ما بيشمله» | جدّد أو رقّي من حسابك على الموقع؛ الإضافة بترجع لحالها. |
+| الواجهة من برا بتقول «مسكّرة» | شغّلها من حسابك على الموقع ← البيت الذكي. وإذا في تنبيه إنها مسكّرة للأمان، اتبعه (مستخدمين محليين / trusted networks). |
+| تطبيق الموبايل ما بيشتغل من برا | شغّل الواجهة من برا من حسابك على الموقع، أو حط العنوان العام بالتطبيق يدوياً. |
 | بدك تشوف التفاصيل | Zero Home ← ⋮ ← Download diagnostics (المفتاح مخفي فيه). |
 
 </div>
@@ -91,7 +77,7 @@ Zero relay; nothing connects into your network.
 
 ### Requirements
 
-- Home Assistant 2024.6 or newer.
+- Home Assistant 2024.8 or newer.
 - A Zero subscription that includes Zero Home.
 
 ### Install
@@ -103,46 +89,29 @@ Home Assistant.
 **Manual:** copy `custom_components/zero_home` into your
 `config/custom_components/` folder and restart Home Assistant.
 
-### Activate
+### Sign in (1.3.0)
 
-**The easy way — with your Zero account (no code):**
+Settings → Devices & services → Add integration → **Zero Home**, then either:
 
-1. In Home Assistant: *Settings → Devices & services → Add integration → Zero Home*.
-2. Choose **"Sign in with my Zero account"**.
-3. Enter the **same username and password** you sign in to Zero with. The home's address becomes your
-   username: `https://<username>.home.eshtaya.ps`.
+- **Zero username and password**, or
+- **QR code:** a code appears on screen — scan it with your phone's camera or open `zero.eshtaya.ps/pair` and type
+  it, then approve it in your account. The code renews itself and the screen continues on its own.
 
-Your plan must include the smart home. Zero's own "Link Home Assistant" wizard shows the same steps.
+Your plan must include the smart home. Your home's address: `https://<username>.home.eshtaya.ps`.
 
-**Or with an activation code:** in Zero open *My account → Smart home → Zero Home* and get a code
-`ZH-XXXX-XXXX-XXXX` (single use, valid 24 h); at step 2 choose "I have an activation code".
+### No settings inside Home Assistant
 
-With *Advanced mode* on in your profile you can change the Zero Admin API
-address; leave it unless Zero support tells you otherwise.
-
-### The wizard (1.2.0)
-
-Set-up is a 4-step wizard: welcome → sign in to Zero → **what Zero may see** (everything, some rooms,
-some device types, or exactly chosen) → **Home Assistant's interface from outside?** → summary with your
-home's address. *Configure* later shows the same steps and the live connection status.
-
-- **Web interface from outside: off by default.** Turn it on only if you want Home Assistant's own screens
-  on your public address (and in Zero's «Home Assistant» tab). Zero's voice control works either way.
-- **External URL:** when the interface is on, the public address becomes `external_url` (an existing
-  different one is replaced only after you confirm).
-
-### No configuration.yaml changes
-
-Newer Home Assistant versions no longer take `trusted_proxies` from configuration.yaml, so the integration
-works in *direct mode*: Home Assistant sees visitors as coming from the integration itself. For safety:
-
-- if any user has «Can only log in from the local network», or the «trusted networks» login is enabled,
-  the interface from outside stays closed and a repair issue explains what to change;
-- webhooks are not reachable through the link;
-- repeated sign-in attempts from one visitor are blocked for a while (counted by their real address).
-
-(If your version still accepts `http: use_x_forwarded_for: true` + `trusted_proxies: [127.0.0.1, ::1]`,
-the integration uses it automatically.)
+- The integration **only shows** the connection, the home address and the Zero account (name, subscription, days
+  left), with a link to your account.
+- **Every setting is in your account on Zero's site** (My account → Smart home): what Zero may see (everything /
+  rooms / types / devices) and whether Home Assistant's interface opens from outside (off by default). Changes
+  arrive within a minute.
+- **No sign-out button.** It stays signed in until you sign it out from your account → Devices; then the link stops
+  and Home Assistant asks you to sign in again (same account only).
+- Upgrading from 1.2 or older: sign in once after the update; the address stays the same.
+- **No configuration.yaml changes needed.** For safety: with a local-only user or trusted networks login the
+  interface from outside stays closed (a repair issue explains); webhooks are not reachable through the link;
+  repeated sign-in attempts are paused.
 
 ### Privacy — what goes through the link
 
@@ -161,11 +130,12 @@ the integration uses it automatically.)
 
 | Problem | What to do |
 |---|---|
-| "Cannot reach Zero" while activating | Check the internet connection and the clock. |
+| "Cannot reach Zero" while signing in | Check the internet connection and the clock. |
 | The «Zero Home» sensor is off | See its `last_error` attribute. It retries by itself (1, 2, 5, 10, 30 s, then every minute); a repair issue appears after 30 min. |
-| "The link was stopped" / "subscription does not include it" | Sign in again with your Zero account (or a new activation code) in the re-authentication dialog. |
-| The public address shows «closed from outside» | Turn on «Open Home Assistant's interface from outside» in *Configure*. If a repair issue says it is closed for safety, follow it (local-only users / trusted networks). |
-| Mobile app does not work away from home | Enable the external URL option, or enter the public address in the app. |
+| "Signed out of the Zero account" | Sign in again (account or QR) in the re-authentication dialog, with the same account. |
+| "Subscription does not include it" | Renew or upgrade in your account on the site; it reconnects by itself. |
+| The public address shows «closed from outside» | Turn it on in your account on the site → Smart home. If a repair issue says it is closed for safety, follow it (local-only users / trusted networks). |
+| Mobile app does not work away from home | Turn on the interface from outside in your account, or enter the public address in the app. |
 | Need details for support | Zero Home → ⋮ → Download diagnostics (the key is redacted). |
 
 ### Development
